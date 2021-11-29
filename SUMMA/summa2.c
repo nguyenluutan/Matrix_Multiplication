@@ -39,7 +39,6 @@ void read_matrix(double* A, char* filename, MPI_Comm comm_cart);
 double* plus_matrix(double* A, double* B, int n);
 void MyMatMat(double* C, double* A, double* B, int n);
 double* SUMMA(MPI_Comm comm_cart, double* C, double* A, double* B, int n);
-void Strassen(double* C_sub, double* A_sub, double* B_sub, int n);
 
 int main(int argc, char* argv[]) {
 
@@ -296,7 +295,4 @@ void print_matrix(double* A, int n) {
     printf("\n");
 }
 
-/*under construction-------------------*/
-//void Strassen(double* C_sub,double* A_sub, double* B_sub,int n) {
-//
 }
