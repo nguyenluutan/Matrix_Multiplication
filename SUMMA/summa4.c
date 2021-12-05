@@ -1,4 +1,4 @@
-// Compile: mpicc -g -Wall -std=c99 summa.c -o summa -lm
+// Compile: mpicc -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
 // <m>, <n> and <k> must be dividable by sqrt(<number of procs>)
@@ -178,7 +178,7 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
 
     // determine my cart coords
     int coords[2];
-    MPI_Cart_coords(comm_cart, myrank, 2, coords);
+    MPI_Cart_coords( comm_cart, myrank, 2, coords );
 
     MPI_Comm row_comm;
     MPI_Comm col_comm;
@@ -263,7 +263,7 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     // ====================================================
 
     /********** REAL CODE - Eric, 04.12.2021 ***************/
-    int bcast, i, j;
+    int bcast_root;
 
     for ( bcast_root=0; bcast_root<nblks; ++bcast_root) {
         if ( my_col == bcast_root ) {
@@ -276,9 +276,9 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
         }
         MPI_Bcast( B_loc, nb*kb, MPI_DOUBLE, bcast_root, col_comm );
 
-        matmul_naive( C_loc_tmp, A_loc, B_loc, nb);
+        matmul_naive( nb, mb, kb, A_loc, B_loc, C_loc_tmp );
 
-        C_loc = plus_matrix( C_loc, C_loc_tmp, nb );
+        plus_matrix( m, n, C_loc_tmp, C_loc_tmp, C_loc );
     }
 
     free(A_loc_save);
@@ -359,18 +359,18 @@ int main(int argc, char *argv[]) {
     // ====================================================
 
     /******* REAL CODE - Eric, 04.12.2021 *****///////
-    MPI_Cart_create( MPI_COMM_WORLD, 2, dims, periods, reorder, &comm_cart );
+    MPI_Cart_create( MPI_COMM_WORLD, ndims, dims, periods, reorder, &comm_cart );
 
     // my rank in the new communicator
     int my_grid_rank;
-    MPI_Comm_rank( cart_comm, &my_grid_rank );
+    MPI_Comm_rank( comm_cart, &my_grid_rank );
 
     int my_coords[2];
-    MPI_Cart_coords( cart_comm, my_grid_rank, 2, my_coords );
+    MPI_Cart_coords( comm_cart, my_grid_rank, ndims, my_coords );
 
     // Print my location in the 2D cartesian topology.
     printf("[MPI process %d] I am located at (%d, %d) in the initial 2D cartesian topology.\n",
-    my_rank, my_coords[0], my_coords[1]);
+    myrank, my_coords[0], my_coords[1]);
 
     // assume for simplicity that matrix dims are dividable by proc grid size
     // each proc determines its local block sizes
