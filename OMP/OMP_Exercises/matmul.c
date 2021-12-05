@@ -1,7 +1,7 @@
 /*
 **  PROGRAM: Matrix Multiply
 **
-**  PURPOSE: This is a simple matrix multiply program. 
+**  PURPOSE: This is a simple matrix multiply program.
 **           It will compute the product
 **
 **                C  = A * B
@@ -9,7 +9,7 @@
 **           A and B are set to constant matrices so we
 **           can make a quick test of the multiplication.
 **
-**  USAGE:   Right now, I hardwire the martix dimensions. 
+**  USAGE:   Right now, I hardwire the martix dimensions.
 **           later, I'll take them from the command line.
 **
 **  HISTORY: Written by Tim Mattson, Nov 1999.
@@ -41,8 +41,8 @@ int main(int argc, char **argv)
 	Mdim = ORDER;
 
    	A = (double *)malloc(Ndim*Pdim*sizeof(double));
-      B = (double *)malloc(Pdim*Mdim*sizeof(double));
-      C = (double *)malloc(Ndim*Mdim*sizeof(double));
+    B = (double *)malloc(Pdim*Mdim*sizeof(double));
+    C = (double *)malloc(Ndim*Mdim*sizeof(double));
 
 	/* Initialize matrices */
 
@@ -60,7 +60,7 @@ int main(int argc, char **argv)
 
 	/* Do the matrix product */
 
-	start_time = omp_get_wtime(); 
+	start_time = omp_get_wtime();
 	for (i=0; i<Ndim; i++){
 		for (j=0; j<Mdim; j++){
 			tmp = 0.0;
@@ -74,12 +74,12 @@ int main(int argc, char **argv)
 	/* Check the answer */
 
 	run_time = omp_get_wtime() - start_time;
- 
+
 	printf(" Order %d multiplication in %f seconds \n", ORDER, run_time);
 
       dN = (double)ORDER;
       mflops = 2.0 * dN * dN * dN/(1000000.0* run_time);
- 
+
 	printf(" Order %d multiplication at %f mflops\n", ORDER, mflops);
 
 	cval = Pdim * AVAL * BVAL;
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (errsq > TOL) 
+	if (errsq > TOL)
 		printf("\n Errors in multiplication: %f",errsq);
 	else
 		printf("\n Hey, it worked");
