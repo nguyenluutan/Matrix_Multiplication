@@ -95,19 +95,15 @@ void matmul_naive(const int m, const int n, const int k,
 // eps = max(abs(Cnaive - Csumma)
 double validate(const int m, const int n, const double *Csumma, double *Cnaive) {
 
-
     double eps = 0.0;
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < n; ++j) {
             int idx = i*n + j;
             Cnaive[idx] = fabs(Cnaive[idx] - Csumma[idx]);
 
-            if (eps < Cnaive[idx]) {
-                eps = Cnaive[idx];
-            }
+            if (eps < Cnaive[idx]) { eps = Cnaive[idx]; }
         }
     }
-
     return eps;
 }
 
@@ -124,9 +120,7 @@ void gather_glob(const int mb, const int nb, const double *A_loc,
 
     double *A_tmp = NULL;
 
-    if (myrank == 0) {
-        A_tmp = (double *) calloc(m * n, sizeof(double));
-    }
+    if (myrank == 0) { A_tmp = (double *) calloc(m * n, sizeof(double)); }
 
     MPI_Gather(A_loc, mb*nb, MPI_DOUBLE, A_tmp, mb*nb, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -158,7 +152,6 @@ void gather_glob(const int mb, const int nb, const double *A_loc,
 
         }
     }
-
     free(A_tmp);
 }
 
@@ -300,7 +293,6 @@ void parse_cmdline(int argc, char *argv[]) {
             for (int i = 0; i < argc; i++) {
                 printf("%s\n", argv[i]);
             }
-
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
@@ -321,6 +313,75 @@ void parse_cmdline(int argc, char *argv[]) {
     }
 }
 
+/*********** OpenMP - Part, Eric 06.12.2021 ************/
+void transpose(const int n, const int m, double *A, double *B) {
+    int i, j;
+    for(j=0; j<n; j++) {
+		for(i=0; i<m; i++) {
+			B[i*n + j] = A[j*m + i];
+		}
+	}
+} /****** THIS IS THE ORIGINAL TRANSPOSE FUNCTION! *****/
+
+void gemmT(const int n, const int m, const int k,
+        const double *A, const double *B, const double *C) {
+
+    int i, j, l;
+	double *B2;
+	B2 = (double*) malloc(sizeof(double)*n*m);
+    transpose(n, m, B, B2);
+	for (j=0; j<n; j++) {
+		for (i=0; i<m; i++) {
+            C[j*k + i] = 0.0;
+			for (l=0; l<k; l++) {
+				C[j*k + i] += A[j*n + l] * B2[l*k + i];
+			}
+		}
+	}
+	free(B2);
+}
+
+void gemm_omp(const int n, const int m, const int k,
+        const double *A, const double *B, const double *C) {
+
+    #pragma omp parallel
+	{
+		int i, j, l;
+		#pragma omp for
+		for (j=0; j<n; j++) {
+			for (i=0; i<m; i++) {
+				C[j*k + i] = 0.0;
+				for (l=0; l<k; k++) {
+					C[j*k + i] += A[j*n + l] * B[l*k + i];
+				}
+			}
+		}
+	}
+}
+
+void gemmT_omp(const int n, const int m, const int k,
+        const double *A, const double *B, const double *C) {
+
+    double *B2;
+	B2 = (double*) malloc(sizeof(double)*n*m);
+    transpose(n, m, B, B2);
+	#pragma omp parallel
+	{
+		int i, j, k;
+		#pragma omp for
+		for (j=0; j<n; j++) {
+			for (i=0; i<m; i++) {
+				C[j*k + i] = 0.0;
+				for (l=0; l<k; l++) {
+					C[j*k + i] += A[j*n + l] * B2[l*k + i];
+				}
+			}
+		}
+	}
+	free(B2);
+}
+
+/************** MAIN SCRIPT ***************/
 int main(int argc, char *argv[]) {
 
     MPI_Init(&argc, &argv);
@@ -377,6 +438,7 @@ int main(int argc, char *argv[]) {
     int mb = m / n_proc_rows;
     int nb = n / n_proc_cols; // == n / n_proc_rows
     int kb = k / n_proc_cols;
+
     if (mb * n_proc_rows != m) {
         fprintf(stderr, "ERROR: m must be dividable by n_proc_rows\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
@@ -424,22 +486,27 @@ int main(int argc, char *argv[]) {
     gather_glob(nb, kb, B_loc, n, k, B_glob);
 #endif
 
-    // call SUMMA and measure execution time using tstart, tend
-    double tstart, tend;
-    tstart = MPI_Wtime();
+    // call SUMMA (MPI), matmul_transpose, matmul (OMP), matmul_transpose (OMP)
+    // take start and end times of calculations for comparison
+    double tstart_mpi, tend_mpi, diff_time_mpi;
+    double tstart_transp, tend_transp, diff_time_transp;
+    double tstart_omp, tend_omp, diff_time_omp;
+    double tstart_omp_transp, tend_omp_transp, diff_time_omp_transpose;
+
+    tstart_mpi = MPI_Wtime();
 
     // You should implement SUMMA algorithm in SUMMA function.
     // SUMMA stub function is in this file (see above).
     SUMMA(comm_cart, mb, nb, kb, A_loc, B_loc, C_loc);
 
-    tend = MPI_Wtime();
+    tend_mpi = MPI_Wtime();
 
     // Each processor will spend different time doing its
     // portion of work in SUMMA algorithm. To understand how long did
     // SUMMA execution take overall we should find time of the slowest processor.
     // We should be using MPI_Reduce function with MPI_MAX operation
-    double etime = tend - tstart;
-    double max_etime = 0.0;
+    diff_time_mpi = tend_mpi - tstart_mpi;
+    double max_diff_time_mpi = 0.0;
 
     // ======== YOUR CODE HERE ============================
     // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
@@ -449,11 +516,14 @@ int main(int argc, char *argv[]) {
     // ====================================================
 
     /********* REAL CODE - Eric, 04.12.2021 *********/
-    MPI_Reduce( &etime, &max_etime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
+    MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
 
-    if (myrank == 0) {
-        printf("SUMMA took %f sec\n", max_etime);
-    }
+    if (myrank == 0) { printf("SUMMA took %f sec\n", max_diff_time_mpi); }
+
+    tstart_transp = MPI_Wtime();
+
+
+
 
 #ifdef CHECK_NUMERICS
     // gather C_glob

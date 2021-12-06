@@ -10,9 +10,9 @@ Code especially for OpenMP !!!
 
 #define N 50
 
-int A[N][N];
-int B[N][N];
-int C[N][N];
+double A[N][N];
+double B[N][N];
+double C[N][N];
 
 int main() {
 	int i, j, k;
@@ -22,10 +22,12 @@ int main() {
 
   omp_set_num_threads(omp_get_num_procs());
 
+	srand(time(0));
+
 	for (i=0; i<N; i++) {
 		for (j=0; j<N; j++) {
-			A[i][j] = 2;
-      B[i][j] = 2;
+			A[i][j] = (double)rand() / (double)((unsigned)RAND_MAX);
+			B[i][j] = (double)rand() / (double)((unsigned)RAND_MAX);
 		}
 	}
 
@@ -48,7 +50,7 @@ int main() {
 
   for (i=0; i<N; i++) {
 		for (j=0; j<N; j++) {
-			printf("%d\t", C[i][j]);
+			printf("%.2f\t", C[i][j]);
     }
     printf("\n");
   }

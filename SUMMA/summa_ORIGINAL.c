@@ -11,8 +11,8 @@
 int i_one = 1; // constant to BLAS call
 double d_one = 1.0, d_zero = 0.0; // constant to BLAS call
 
-void pdgemm ( m, n, k, nb, alpha, a, lda, b, ldb, beta, c, ldc, m_a, n_a, m_b,
-                  n_b, m_c, n_c, comm_row, comm_col, work1, work2 );
+/*** void pdgemm ( m, n, k, nb, alpha, a, lda, b, ldb, beta, c, ldc, m_a, n_a, m_b,
+                  n_b, m_c, n_c, comm_row, comm_col, work1, work2 ); ****/
 
 int m, n, k, // global matrix dimensions
     nb, // panel width
@@ -27,6 +27,21 @@ double *a, *b, *c, // arrays that hold local part of A,B,C
 
 MPI_Comm comm_row, // Communicator for rows of nodes
          comm_col; // Communicator for columns of nodes
+
+RING_Bcast ( double *buf, int count, MPI_Datatype type, int root, MPI_Comm comm )
+{
+    int me, np;
+    MPI_Status status;
+
+    MPI_Comm_rank ( comm,me );
+    MPI_Comm_size ( comm,np );
+    if ( me != root ) {
+        MPI_Recv ( buf, count, type, (me-1+np)%np, MPI_ANY_TAG, comm );
+    }
+    if ( (me+1)%np != root ) {
+        MPI_Send ( buf, count, type, (me+1)%np, 0, comm );
+    }
+}
 
 int main()
 {
@@ -79,18 +94,4 @@ int main()
     free ( temp );
 
     return 0;
-}
-
-RING_Bcast ( double *buf, int count, MPI_Datatype type, int root, MPI_COMM comm )
-{
-    int me, np;
-    MPI_Status status;
-
-    MPI_Comm_rank ( comm,me ); MPI_Comm_size ( comm,np );
-    if ( me != root ) {
-        MPI_Recv ( buf, count, type, (me-1+np)%np, MPI_ANY_TAG, comm );
-    }
-    if ( (me+1)%np != root ) {
-        MPI_Send ( buf, count, type, (me+1)%np, 0, comm );
-    }
 }

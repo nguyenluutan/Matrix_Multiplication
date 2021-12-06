@@ -15,6 +15,15 @@ void transpose(double *A, double *B, int n) {
 	}
 }
 
+/***** void transpose(double **A, double **B, int n) {
+    int i,j;
+    for( i=0; i<n; i++ ) {
+        for( j=0; j<n; j++ ) {
+            B[i][j] = A[i][j];
+        }
+    }
+} //THIS IS THE NEW VERSION OF TRANSPOSE *******/
+
 void gemm(double *A, double *B, double *C, int n) {
 	int i, j, k;
 	for (i=0; i<n; i++) {
