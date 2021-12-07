@@ -1,0 +1,7 @@
+TestNo 101 C=A.B with 1x5 dot 5x1, Colab time 1.6450881958007812e-05, is_all_integers False, highest 1000, lowest 044.34 284.82 322.22 661.91 322.72
+563.77
+212.98
+133.19
+937.59
+659.71
+962082.25

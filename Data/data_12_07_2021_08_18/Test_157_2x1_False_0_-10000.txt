@@ -1,0 +1,5 @@
+TestNo 157 C=A.B with 2x1 dot 1x2, Colab time 0.0006670951843261719, is_all_integers False, highest 0, lowest -10000-1033.49
+-8112.46
+-7880.96 -4971.50
+8144871.42 5137983.62
+63933982.19 40331115.87
