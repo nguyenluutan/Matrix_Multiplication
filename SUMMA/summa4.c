@@ -107,10 +107,6 @@ double validate(const int m, const int n, const double *Csumma, double *Cnaive) 
     return eps;
 }
 
-
-// You don't need to modify any code in this function.
-// It is prepared for you by TA to save your time.
-// We encourage you to look through this function and understand how it works.
 //
 // gather global matrix from all processors in a 2D proc grid
 // needed for debugging and numeric validation only
@@ -128,9 +124,7 @@ void gather_glob(const int mb, const int nb, const double *A_loc,
     if (myrank != 0) return;
 
     // fix data layout
-    // detailed explanation of a problem can be found here:
     // http://stackoverflow.com/questions/5585630/mpi-type-create-subarray-and-mpi-gather
-    // for the sake of education here we are shuffling data manually instead of creating new MPI datatypes
 
     int nblks_m = m / mb;
     int nblks_n = n / nb;
@@ -206,7 +200,7 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
 
 
     int nblks = n / nb;
-    // ======== YOUR CODE HERE ============================
+
     // Implement main SUMMA loop here:
     // root column (or row) should loop though nblks columns (rows).
     //
@@ -222,13 +216,6 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     //
     // Finally, accumulate partials sums of `C_loc_tmp` to `C_loc` on each iteration
     // using `plus_matrix` function.
-    //
-    // Tip: MPI_Bcast function uses same pointer to buffer on all processors,
-    // but initially on root processor it contains necessary data, and receivers will
-    // get data during MPI_Bcast. Be sure not to overwrite each proc's local matrix
-    // during these operations. This is why we saved local parts in
-    // `A_loc_save` and `B_loc_save` in advance.
-    //
     //
     // Pseudo code:
     // for (int bcast_root = 0; bcast_root < nblks; ++bcast_root) {
@@ -406,7 +393,7 @@ int main(int argc, char *argv[]) {
     const int periods[2] = {0, 0};
     int reorder = 0;
     MPI_Comm comm_cart;
-    // ======== YOUR CODE HERE ============================
+
     // Create 2D cartesian communicator using MPI_Cart_Create function
     // MPI_COMM_WORLD is your initial communicator
     // We do not need periodicity in dimensions for SUMMA, so we set periods to 0.
@@ -414,10 +401,6 @@ int main(int argc, char *argv[]) {
     //
     // Dimensions of the new communicator should be [n_proc_rows, n_proc_cols].
     // New communicator with Cartesian topology should be assigned to
-    // variable `comm_cart`.
-    //
-    // MPI_Cart_create(... YOUR CODE HERE ...);
-    // ====================================================
 
     /******* REAL CODE - Eric, 04.12.2021 *****///////
     MPI_Cart_create( MPI_COMM_WORLD, ndims, dims, periods, reorder, &comm_cart );
@@ -511,9 +494,6 @@ int main(int argc, char *argv[]) {
     // ======== YOUR CODE HERE ============================
     // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
     // and save it in `max_etime` variable on root processor (rank 0).
-    // Use MPI_Reduce function and MPI_MAX operation.
-    // MPI_Reduce(... YOUR CODE HERE ...);
-    // ====================================================
 
     /********* REAL CODE - Eric, 04.12.2021 *********/
     MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
