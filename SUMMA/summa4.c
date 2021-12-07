@@ -1,4 +1,5 @@
-// Compile: mpicc -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
+// Compile MacBook: mpicc -openmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
+// Compile Cluster: mpicc -fopenmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
 // <m>, <n> and <k> must be dividable by sqrt(<number of procs>)
@@ -11,22 +12,15 @@
 #include <math.h>
 #include <time.h>
 #include <mpi.h>
-
+#include <omp.h>
 
 // if CHECK_NUMERICS is defined, program will gather global matrix C
 // calculated by SUMMA to root processor and compare it with
 // C_naive, calculated by naive matrix multiply algorithm.
-// Use for algorithm debugging only:
-// very large matrices will not fit single cpu memory.
 #define CHECK_NUMERICS
 
 // tolerance for validation of matrix multiplication
 #define TOL 1e-4
-
-// Init matrix with non-random numbers: each local matrix
-// will contain elements equal to processor's rank.
-// Use for algorithm debugging only.
-//#define DEBUG
 
 // global matrices size
 // A[m,n], B[n,k], C[m,k]
@@ -34,27 +28,19 @@ int m;
 int n;
 int k;
 
-// each processor will keep its rank in `myrank`
 int myrank;
 
 void init_matrix(double *matr, const int rows, const int cols) {
-    // in real life each proc calculates its portion
-    // from some equations, e.g. from PDE
-    // here we will use random values
 
-#ifndef DEBUG
     srand((unsigned int) time(NULL));
-#endif
 
     double rnd = 0.0;
+
     for (int j = 0; j < rows; ++j) {
         for (int i = 0; i < cols; ++i) {
-#ifdef DEBUG
-            // for debugging it is useful to init local matrix by proc's rank
-            rnd = myrank;
-#else
+
             rnd = rand() * 1.0 / RAND_MAX;
-#endif
+
             matr[j*cols + i] = rnd;
         }
     }
@@ -107,10 +93,8 @@ double validate(const int m, const int n, const double *Csumma, double *Cnaive) 
     return eps;
 }
 
-//
 // gather global matrix from all processors in a 2D proc grid
 // needed for debugging and numeric validation only
-// never happens in real life in production runs because global matrix does not fit any single proc memory
 void gather_glob(const int mb, const int nb, const double *A_loc,
     const int m, const int n, double *A_glob) {
 
@@ -123,7 +107,6 @@ void gather_glob(const int mb, const int nb, const double *A_loc,
     // only rank 0 has something to do, others are free
     if (myrank != 0) return;
 
-    // fix data layout
     // http://stackoverflow.com/questions/5585630/mpi-type-create-subarray-and-mpi-gather
 
     int nblks_m = m / mb;
@@ -155,6 +138,7 @@ void plus_matrix(const int m, const int n, double *A, double *B, double *C) {
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < n; ++j) {
             int idx = i*m + j;
+
             C[idx] = A[idx] + B[idx];
         }
     }
@@ -201,13 +185,12 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
 
     int nblks = n / nb;
 
-    // Implement main SUMMA loop here:
     // root column (or row) should loop though nblks columns (rows).
     //
-    // If processor's column coordinate equals to root, it should broadcast
+    // If processor's column coordinate equals to root, it broadcasts
     // its local portion of A within its `row_comm` communicator.
     //
-    // If processor's row coordinate equals to root, it should broadcast
+    // If processor's row coordinate equals to root, it broadcasts
     // its local portion of B within its `col_comm` communicator.
     //
     // After broadcasting, call multiply_naive to multiply local portions
@@ -256,7 +239,7 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
         }
         MPI_Bcast( B_loc, nb*kb, MPI_DOUBLE, bcast_root, col_comm );
 
-        matmul_naive( nb, mb, kb, A_loc, B_loc, C_loc_tmp );
+        matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc_tmp );
 
         plus_matrix( m, n, C_loc_tmp, C_loc_tmp, C_loc );
     }
@@ -300,66 +283,67 @@ void parse_cmdline(int argc, char *argv[]) {
 }
 
 /*********** OpenMP - Part, Eric 06.12.2021 ************/
-void transpose(const int n, const int m, double *A, double *B) {
+void transpose(const int m, const int n, double *A, double *B) {
+
     int i, j;
-    for(j=0; j<n; j++) {
-		for(i=0; i<m; i++) {
-			B[i*n + j] = A[j*m + i];
+    for(j=0; j<m; j++) {
+		for(i=0; i<n; i++) {
+			B[i*m + j] = A[j*n + i];
 		}
 	}
 } /****** THIS IS THE ORIGINAL TRANSPOSE FUNCTION! *****/
 
-void gemmT(const int n, const int m, const int k,
+void matmul_transp(const int m, const int n, const int k,
             double *A, double *B, double *C) {
 
     int i, j, l;
 	double *B2;
 	B2 = (double*) malloc(sizeof(double)*n*m);
-    transpose(n, m, B, B2);
-	for (j=0; j<n; j++) {
-		for (i=0; i<m; i++) {
+    transpose(m, n, B, B2);
+	for (j=0; j<m; j++) {
+		for (i=0; i<n; i++) {
             C[j*k + i] = 0.0;
 			for (l=0; l<k; l++) {
-				C[j*k + i] += A[j*n + l] * B2[l*k + i];
+				C[j*k + i] += A[j*m + l] * B2[l*k + i];
 			}
 		}
 	}
 	free(B2);
 }
 
-void gemm_omp(const int n, const int m, const int k,
+void matmul_omp(const int m, const int n, const int k,
                 double *A, double *B, double *C) {
 
     #pragma omp parallel
 	{
 		int i, j, l;
 		#pragma omp for
-		for (j=0; j<n; j++) {
-			for (i=0; i<m; i++) {
+		for (j=0; j<m; j++) {
+			for (i=0; i<n; i++) {
 				C[j*k + i] = 0.0;
 				for (l=0; l<k; l++) {
-					C[j*k + i] += A[j*n + l] * B[l*k + i];
+					C[j*k + i] += A[j*m + l] * B[l*k + i];
 				}
 			}
 		}
 	}
 }
 
-void gemmT_omp(const int n, const int m, const int k,
+void matmul_omp_transp(const int m, const int n, const int k,
                 double *A, double *B, double *C) {
 
     double *B2;
 	B2 = (double*) malloc(sizeof(double)*n*m);
-    transpose(n, m, B, B2);
+    transpose(m, n, B, B2);
 	#pragma omp parallel
 	{
 		int i, j, l;
 		#pragma omp for
-		for (j=0; j<n; j++) {
-			for (i=0; i<m; i++) {
+		for (j=0; j<m; j++) {
+			for (i=0; i<n; i++) {
 				C[j*k + i] = 0.0;
 				for (l=0; l<k; l++) {
-					C[j*k + i] += A[j*n + l] * B2[l*k + i];
+					C[j*k + i] += A[j*m + l] * B2[l*k + i];
 				}
 			}
 		}
@@ -394,12 +378,11 @@ int main(int argc, char *argv[]) {
     MPI_Comm comm_cart;
 
     // Create 2D cartesian communicator using MPI_Cart_Create function
-    // MPI_COMM_WORLD is your initial communicator
-    // We do not need periodicity in dimensions for SUMMA, so we set periods to 0.
-    // We also do not need to reorder ranking, so we set reorder to 0 too.
+    // MPI_COMM_WORLD is initial communicator
+    // We do not need periodicity in dimensions for SUMMA, so we set periods to 0
+    // We also do not need to reorder ranking, so we set reorder to 0 too
     //
-    // Dimensions of the new communicator should be [n_proc_rows, n_proc_cols].
-    // New communicator with Cartesian topology should be assigned to
+    // Dimensions of the new communicator is [n_proc_rows, n_proc_cols].
 
     /******* REAL CODE - Eric, 04.12.2021 *****///////
     MPI_Cart_create( MPI_COMM_WORLD, ndims, dims, periods, reorder, &comm_cart );
@@ -457,8 +440,6 @@ int main(int argc, char *argv[]) {
 #endif
 
     // init matrices: fill A_loc and B_loc with random values
-    // in real life A_loc and B_loc are calculated by each proc
-    // from e.g. partial differential equations
     init_matrix(A_loc, mb, nb);
     init_matrix(B_loc, nb, kb);
 
@@ -473,34 +454,61 @@ int main(int argc, char *argv[]) {
     double tstart_mpi, tend_mpi, diff_time_mpi;
     double tstart_transp, tend_transp, diff_time_transp;
     double tstart_omp, tend_omp, diff_time_omp;
-    double tstart_omp_transp, tend_omp_transp, diff_time_omp_transpose;
+    double tstart_omp_transp, tend_omp_transp, diff_time_omp_transp;
 
+    // Take time of SUMMA run
     tstart_mpi = MPI_Wtime();
 
-    // You should implement SUMMA algorithm in SUMMA function.
-    // SUMMA stub function is in this file (see above).
     SUMMA(comm_cart, mb, nb, kb, A_loc, B_loc, C_loc);
 
     tend_mpi = MPI_Wtime();
 
     // Each processor will spend different time doing its
     // portion of work in SUMMA algorithm. To understand how long did
-    // SUMMA execution take overall we should find time of the slowest processor.
-    // We should be using MPI_Reduce function with MPI_MAX operation
+    // find out slowest processor in SUMMA by MPI_REDUCE
     diff_time_mpi = tend_mpi - tstart_mpi;
     double max_diff_time_mpi = 0.0;
 
     // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
-    // and save it in `max_etime` variable on root processor (rank 0).
+    // and save it in max_diff_time variable on root processor (rank 0).
 
-    /********* REAL CODE - Eric, 04.12.2021 *********/
     MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
 
-    if (myrank == 0) { printf("SUMMA took %f sec\n", max_diff_time_mpi); }
+    if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); }
+    if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
 
+    // take time of transposed matrix-multilplication run
     tstart_transp = MPI_Wtime();
 
+    matmul_transp( mb, nb, kb, A_loc, B_loc, C_loc );
 
+    tend_transp = MPI_Wtime();
+
+    diff_time_transp = tend_transp - tstart_transp;
+
+    if (myrank == 0) { printf("Transposed-Matrix-Multiplication took %f sec\n", diff_time_transp); }
+
+    // take time of omp matrix multiplication run
+    tstart_omp = MPI_Wtime();
+
+    matmul_omp( mb, nb, kb, A_loc, B_loc, C_loc );
+
+    tend_omp = MPI_Wtime();
+
+    diff_time_omp = tend_omp - tstart_omp;
+
+    if (myrank == 0) { printf("OpenMP-Matrix-Multiplication took %f sec\n", diff_time_omp); }
+
+    // take time of omp AND transposed matrix multiplication
+    tstart_omp_transp = MPI_Wtime();
+
+    matmul_omp_transp( mb, nb, kb, A_loc, B_loc, C_loc );
+
+    tend_omp_transp = MPI_Wtime();
+
+    diff_time_omp_transp = tend_omp_transp - tstart_omp_transp;
+
+    if (myrank == 0) { printf("OpenMP-transposed-Matrix-Multiplication took %f sec\n", diff_time_omp_transp); }
 
 
 #ifdef CHECK_NUMERICS
@@ -509,13 +517,6 @@ int main(int argc, char *argv[]) {
 
     if (myrank == 0) {
         matmul_naive(m, n, k, A_glob, B_glob, C_glob_naive);
-
-#ifdef DEBUG
-        printf("C_glob_naive:\n");
-        print_matrix(m, k, C_glob_naive);
-        printf("C_glob:\n");
-        print_matrix(m, k, C_glob);
-#endif
 
         double eps = validate(n, k, C_glob, C_glob_naive);
         if (eps > TOL) {
