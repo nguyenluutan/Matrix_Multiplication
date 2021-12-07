@@ -337,7 +337,7 @@ void gemm_omp(const int n, const int m, const int k,
 		for (j=0; j<n; j++) {
 			for (i=0; i<m; i++) {
 				C[j*k + i] = 0.0;
-				for (l=0; l<k; k++) {
+				for (l=0; l<k; l++) {
 					C[j*k + i] += A[j*n + l] * B[l*k + i];
 				}
 			}
