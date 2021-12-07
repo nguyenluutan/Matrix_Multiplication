@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.md": "markdown",
-        "regex.h": "c"
+        "regex.h": "c",
+        "random": "c"
     }
 }

@@ -1,14 +1,58 @@
 // https://stackoverflow.com/questions/3501338/c-read-file-line-by-line
-// https://www.geeksforgeeks.org/regular-expressions-in-c/
 
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <regex.h>
+#include <string.h>
 
-int print_result(int value);
-int try_regex(char* first_line);
+struct array_2d {
+	float** arr;
+	int m;
+	int n;
+};
+
+float** createArray(int m, int n)
+{
+    float* values = calloc(m*n, sizeof(float));
+    float** rows = malloc(m*sizeof(float*));
+    for (int i=0; i<m; ++i)
+    {
+        rows[i] = values + i*n;
+    }
+    return rows;
+}
+
+void destroyArray(float** arr)
+{
+    free(*arr);
+    free(arr);
+}
+
+void drawLine(const float** coords, int m, int n);
+
+
+struct array_2d get_array(char* line) {
+	char *ch = strtok(line, "x");
+	int n = atoi(ch);
+	ch = strtok(NULL, " ,");
+	int m = atoi(ch);
+	struct array_2d result = {.arr = createArray(n,m), .m = m, .n = n};
+	// return createArrwhay(n,m);
+	// int result[n][m];
+	// return result;
+	return result;
+} 
+
+void parse(char* line, struct array_2d matrix, int row) {
+	char *ch = strtok(line, " ");
+	int column_count = 0;
+	while (ch != NULL) {
+		float number = atof(ch);
+		matrix.arr[row][column_count++] = number;
+		ch = strtok(NULL, " ,");
+	}
+}
 
 int main()
 {
@@ -22,17 +66,47 @@ int main()
 	if (fp == NULL)
 		exit(EXIT_FAILURE);
 
-	bool first_line = true;
+	int line_count = 0;
+	struct array_2d matrix_a, matrix_b, matrix_c;
 	while ((read = getline(&line, &len, fp)) != -1)
 	{
-		if (first_line)
-		{
-			printf("Process first line here\n");
-			try_regex(line);
-			first_line = false;
+		++line_count;
+
+		if (line_count == 1) {
+			printf("%s", line);
 			continue;
 		}
 
+		if (line_count == 2)
+		{
+			matrix_a = get_array(line);
+			printf("%d x %d\n", matrix_a.n, matrix_a.m);
+			continue;
+		}
+		if (line_count == 3) {
+			matrix_b = get_array(line);
+			printf("%d x %d\n", matrix_b.n, matrix_b.m);
+
+			matrix_c =  (struct array_2d) {.arr = createArray(matrix_a.n, matrix_b.m), .m = matrix_b.m, .n = matrix_a.n};
+			continue;
+		}
+
+		if (line_count <= matrix_a.n + 3) {
+			parse(line, matrix_a, line_count-4);
+			continue;
+		}
+
+		if (line_count <= matrix_b.n + matrix_a.n + 3) {
+			parse(line, matrix_b, line_count-matrix_a.n-4);
+			continue;
+		}
+
+		if (line_count <= matrix_c.n + matrix_b.n + matrix_a.n + 3) {
+			parse(line, matrix_c, line_count-matrix_b.n-matrix_a.n-4);
+			continue;
+		}
+
+		// If all lines parsed, there will not show any line up here
 		printf("%s", line);
 	}
 
@@ -41,51 +115,5 @@ int main()
 		free(line);
 	exit(EXIT_SUCCESS);
 
-	return 0;
-}
-
-int try_regex(char* first_line)
-{
-	// Variable to create regex
-	regex_t regex;
-
-	// Variable to store the return
-	// value after creation of regex
-	int value;
-
-	// Function call to create regex
-	value = regcomp(&regex, "[:word:]", 0);
-
-	// If compilation is successful
-	if (value == 0)
-		printf("RegEx compiled successfully.");
-	else
-		printf("Compilation error.");
-
-	value = regexec(&regex, first_line, 0, NULL, 0);
-	print_result(value);
-	return 0;
-}
-
-// Function to print the result
-int print_result(int value)
-{
-	// If pattern found
-	if (value == 0)
-	{
-		printf("Pattern found.\n");
-		return 0;
-	}
-
-	// If pattern not found
-	if (value == REG_NOMATCH)
-	{
-		printf("Pattern not found.\n");
-		return 0;
-	}
-
-	// If error occured during Pattern
-	// matching
-	printf("An error occured.\n");
 	return 0;
 }
