@@ -265,7 +265,6 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     free(B_loc_save);
     free(C_loc_tmp);
 
-    return C_loc;
 }
 
 void parse_cmdline(int argc, char *argv[]) {
@@ -311,7 +310,7 @@ void transpose(const int n, const int m, double *A, double *B) {
 } /****** THIS IS THE ORIGINAL TRANSPOSE FUNCTION! *****/
 
 void gemmT(const int n, const int m, const int k,
-        const double *A, const double *B, const double *C) {
+            double *A, double *B, double *C) {
 
     int i, j, l;
 	double *B2;
@@ -329,7 +328,7 @@ void gemmT(const int n, const int m, const int k,
 }
 
 void gemm_omp(const int n, const int m, const int k,
-        const double *A, const double *B, const double *C) {
+                double *A, double *B, double *C) {
 
     #pragma omp parallel
 	{
@@ -347,14 +346,14 @@ void gemm_omp(const int n, const int m, const int k,
 }
 
 void gemmT_omp(const int n, const int m, const int k,
-        const double *A, const double *B, const double *C) {
+                double *A, double *B, double *C) {
 
     double *B2;
 	B2 = (double*) malloc(sizeof(double)*n*m);
     transpose(n, m, B, B2);
 	#pragma omp parallel
 	{
-		int i, j, k;
+		int i, j, l;
 		#pragma omp for
 		for (j=0; j<n; j++) {
 			for (i=0; i<m; i++) {
