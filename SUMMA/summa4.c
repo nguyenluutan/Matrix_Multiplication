@@ -491,7 +491,6 @@ int main(int argc, char *argv[]) {
     diff_time_mpi = tend_mpi - tstart_mpi;
     double max_diff_time_mpi = 0.0;
 
-    // ======== YOUR CODE HERE ============================
     // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
     // and save it in `max_etime` variable on root processor (rank 0).
 
