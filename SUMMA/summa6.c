@@ -24,12 +24,12 @@ int myrank;
 
 void init_matrix(double *matr, const int rows, const int cols) {
 
-    srand((unsigned int) time(0));
+    srand((unsigned int) time(NULL));
 
     double rnd = 0.0;
-
-    for (int j = 0; j < rows; ++j) {
-        for (int i = 0; i < cols; ++i) {
+    int j, i;
+    for (j = 0; j < rows; ++j) {
+        for (i = 0; i < cols; ++i) {
 
             rnd = rand() * 1.0 / RAND_MAX;
 
@@ -42,15 +42,15 @@ void init_matrix(double *matr, const int rows, const int cols) {
 // non-parallel!
 // used by root processor to verify result of parallel algorithm
 // C[m,k] = A[m,n] * B[n,k]
-void matmul_naive(const int m, const int n, const int k,
-        const double *A, const double *B, double *C) {
+void matmul_naive(const int m, const int n, const int k, const double *A, const double *B, double *C) {
 
-    for (int j = 0; j < m; ++j) {
-        for (int i = 0; i < k; ++i) {
+    int j, i, l;
+    for (j = 0; j < m; ++j) {
+        for (i = 0; i < n; ++i) {
 
             C[j*k + i] = 0.0;
 
-            for (int l = 0; l < n; ++l) {
+            for (l = 0; l < k; ++l) {
                 C[j*k + i] += A[j*n + l] * B[l*k + i];
             }
         }
@@ -60,8 +60,9 @@ void matmul_naive(const int m, const int n, const int k,
 // Local matrix addition
 // C = A + B
 void plus_matrix(const int m, const int n, double *A, double *B, double *C) {
-    for (int j = 0; j < m; ++j) {
-        for (int i = 0; i < n; ++i) {
+    int j, i;
+    for (j = 0; j < m; ++j) {
+        for (i = 0; i < n; ++i) {
             int idx = j*m + i;
 
             C[idx] = A[idx] + B[idx];
@@ -128,19 +129,17 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     int bcast_root;
 
     for ( bcast_root=0; bcast_root<nblks; ++bcast_root) {
-        if ( my_col == bcast_root ) {
+        if ( my_col == bcast_root )
             memcpy( A_loc, A_loc_save, mb*nb*sizeof(double) );
-        }
         MPI_Bcast( A_loc, mb*nb, MPI_DOUBLE, bcast_root, row_comm );
 
-        if ( my_row == bcast_root ) {
+        if ( my_row == bcast_root )
             memcpy( B_loc, B_loc_save, nb*kb*sizeof(double) );
-        }
         MPI_Bcast( B_loc, nb*kb, MPI_DOUBLE, bcast_root, col_comm );
 
         matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc_tmp );
 
-        plus_matrix( m, n, C_loc_tmp, C_loc_tmp, C_loc );
+        plus_matrix( mb, nb, C_loc_tmp, C_loc_tmp, C_loc );
     }
 
     free(A_loc_save);
@@ -158,7 +157,8 @@ void parse_cmdline(int argc, char *argv[]) {
                     "<m>, <n> and <k> must be dividable by sqrt(<number of procs>)\n"
                     "NOTE: current version of program works with square matrices only\n"
                     "<m> == <n> == <k>\n");
-            for (int i = 0; i < argc; i++) {
+            	int i;
+		for (i = 0; i < argc; i++) {
                 printf("%s\n", argv[i]);
             }
             MPI_Abort(MPI_COMM_WORLD, 1);
@@ -191,7 +191,7 @@ void transpose(const int m, const int n, const double *A, double *B) {
 		}
 	}
 }
-
+/***********
 void matmul_transp(const int m, const int n, const int k,
             const double *A, const double *B, double *C) {
 
@@ -249,6 +249,7 @@ void matmul_omp_transp(const int m, const int n, const int k,
 	}
 	free(B2);
 }
+*********/
 
 /************** MAIN SCRIPT ***************/
 int main(int argc, char *argv[]) {
@@ -262,7 +263,7 @@ int main(int argc, char *argv[]) {
     int nprocs;
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
-    int n_proc_rows = sqrt(nprocs);
+    int n_proc_rows = (int)sqrt(nprocs);
     int n_proc_cols = n_proc_rows;
     if (n_proc_cols * n_proc_rows != nprocs) {
         fprintf(stderr, "ERROR: number of proccessors must be a perfect square!\n");
@@ -379,6 +380,7 @@ int main(int argc, char *argv[]) {
     if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); }
     if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
 
+/*******
     // take time of transposed matrix-multilplication run
     tstart_transp = MPI_Wtime();
 
@@ -411,6 +413,7 @@ int main(int argc, char *argv[]) {
     diff_time_omp_transp = tend_omp_transp - tstart_omp_transp;
 
     if (myrank == 0) { printf("OpenMP-transposed-Matrix-Multiplication took %f sec\n", diff_time_omp_transp); }
+********/
 
 /***********
 #ifdef CHECK_NUMERICS
