@@ -14,14 +14,6 @@
 #include <mpi.h>
 #include <omp.h>
 
-// if CHECK_NUMERICS is defined, program will gather global matrix C
-// calculated by SUMMA to root processor and compare it with
-// C_naive, calculated by naive matrix multiply algorithm.
-#define CHECK_NUMERICS
-
-// tolerance for validation of matrix multiplication
-#define TOL 1e-4
-
 // global matrices size
 // A[m,n], B[n,k], C[m,k]
 int m;
@@ -46,17 +38,6 @@ void init_matrix(double *matr, const int rows, const int cols) {
     }
 }
 
-void print_matrix(const int rows, const int cols, const double *matr) {
-    for (int j = 0; j < rows; ++j) {
-        for (int i = 0; i < cols; ++i) {
-            printf("%12.6f", matr[j*cols + i]);
-        }
-        printf("\n");
-    }
-
-}
-
-
 // naive algorithm for matrix multiplication
 // non-parallel!
 // used by root processor to verify result of parallel algorithm
@@ -76,72 +57,19 @@ void matmul_naive(const int m, const int n, const int k,
     }
 }
 
-// eps = max(abs(Cnaive - Csumma)
-double validate(const int m, const int n, const double *Csumma, double *Cnaive) {
-
-    double eps = 0.0;
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < n; ++j) {
-            int idx = i*n + j;
-            Cnaive[idx] = fabs(Cnaive[idx] - Csumma[idx]);
-
-            if (eps < Cnaive[idx]) { eps = Cnaive[idx]; }
-        }
-    }
-    return eps;
-}
-
-// gather global matrix from all processors in a 2D proc grid
-// needed for debugging and numeric validation only
-void gather_glob(const int mb, const int nb, const double *A_loc,
-    const int m, const int n, double *A_glob) {
-
-    double *A_tmp = NULL;
-
-    if (myrank == 0) { A_tmp = (double *) calloc(m * n, sizeof(double)); }
-
-    MPI_Gather(A_loc, mb*nb, MPI_DOUBLE, A_tmp, mb*nb, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    // only rank 0 has something to do, others are free
-    if (myrank != 0) return;
-
-    // http://stackoverflow.com/questions/5585630/mpi-type-create-subarray-and-mpi-gather
-
-    int nblks_m = m / mb;
-    int nblks_n = n / nb;
-    int idx = 0;
-
-    for (int blk_i = 0; blk_i < nblks_m; ++blk_i) {
-        for (int blk_j = 0; blk_j < nblks_n; ++blk_j) {
-
-            // position in global matrix where current block should start
-            int blk_start_row = blk_i * mb;
-            int blk_start_col = blk_j * nb;
-
-            for (int i = 0; i < mb; ++i) {
-                for (int j = 0; j < nb; ++j) {
-                    A_glob[(blk_start_row + i)*n + (blk_start_col + j)] = A_tmp[idx];
-                    idx++;
-                }
-            }
-
-        }
-    }
-    free(A_tmp);
-}
-
 // Local matrix addition
 // C = A + B
 void plus_matrix(const int m, const int n, double *A, double *B, double *C) {
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < n; ++j) {
-            int idx = i*m + j;
+    for (int j = 0; j < m; ++j) {
+        for (int i = 0; i < n; ++i) {
+            int idx = j*m + i;
 
             C[idx] = A[idx] + B[idx];
         }
     }
 }
 
+/********* MPI ***********/
 void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     double *A_loc, double *B_loc, double *C_loc) {
 
@@ -180,7 +108,6 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     // C_loc = 0.0
     memset(C_loc, 0, mb*kb*sizeof(double));
 
-
     int nblks = n / nb;
 
     // root column (or row) should loop though nblks columns (rows).
@@ -197,33 +124,7 @@ void SUMMA(MPI_Comm comm_cart, const int mb, const int nb, const int kb,
     //
     // Finally, accumulate partials sums of `C_loc_tmp` to `C_loc` on each iteration
     // using `plus_matrix` function.
-    //
-    // Pseudo code:
-    // for (int bcast_root = 0; bcast_root < nblks; ++bcast_root) {
-    //
-    //    int root_col = bcast_root;
-    //    int root_row = bcast_root;
-    //
-    //    // owner of A_loc[root_col,:] will broadcast its block within row comm
-    //    if (my_col == root_col) {
-    //        // copy A_loc_save to A_loc
-    //    }
-    //    // broadcast A_loc from root_col within row_comm
-    //
-    //    // owner of B_loc[:,root_row] will broadcast its block within col comm
-    //    if (my_row == root_row) {
-    //        // copy B_loc_cave to B_loc
-    //    }
-    //    // broadcast B_loc from root_row within col_comm
-    //
-    //    // multiply local blocks A_loc, B_loc using matmul_naive
-    //    // and store in C_loc_tmp
-    //
-    //    // C_loc = C_loc + C_loc_tmp using plus_matrix
-    //}
-    // ====================================================
 
-    /********** REAL CODE - Eric, 04.12.2021 ***************/
     int bcast_root;
 
     for ( bcast_root=0; bcast_root<nblks; ++bcast_root) {
@@ -280,8 +181,8 @@ void parse_cmdline(int argc, char *argv[]) {
     }
 }
 
-/*********** OpenMP - Part, Eric 06.12.2021 ************/
-void transpose(const int m, const int n, double *A, double *B) {
+/*********** OpenMP  ************/
+void transpose(const int m, const int n, const double *A, double *B) {
 
     int i, j;
     for(j=0; j<m; j++) {
@@ -289,10 +190,10 @@ void transpose(const int m, const int n, double *A, double *B) {
 			B[i*m + j] = A[j*n + i];
 		}
 	}
-} /****** THIS IS THE ORIGINAL TRANSPOSE FUNCTION! *****/
+}
 
 void matmul_transp(const int m, const int n, const int k,
-            double *A, double *B, double *C) {
+            const double *A, const double *B, double *C) {
 
     int i, j, l;
 	double *B2;
@@ -310,7 +211,7 @@ void matmul_transp(const int m, const int n, const int k,
 }
 
 void matmul_omp(const int m, const int n, const int k,
-                double *A, double *B, double *C) {
+                const double *A, const double *B, double *C) {
 
     #pragma omp parallel
 	{
@@ -328,7 +229,7 @@ void matmul_omp(const int m, const int n, const int k,
 }
 
 void matmul_omp_transp(const int m, const int n, const int k,
-                double *A, double *B, double *C) {
+                const double *A, const double *B, double *C) {
 
     double *B2;
 	B2 = (double*) malloc(sizeof(double)*n*m);
@@ -382,7 +283,6 @@ int main(int argc, char *argv[]) {
     //
     // Dimensions of the new communicator is [n_proc_rows, n_proc_cols].
 
-    /******* REAL CODE - Eric, 04.12.2021 *****///////
     MPI_Cart_create( MPI_COMM_WORLD, ndims, dims, periods, reorder, &comm_cart );
 
     // my rank in the new communicator
@@ -423,6 +323,7 @@ int main(int argc, char *argv[]) {
     B_loc = (double *) calloc(nb * kb, sizeof(double));
     C_loc = (double *) calloc(mb * kb, sizeof(double));
 
+/******
 #ifdef CHECK_NUMERICS
     // rank 0 allocates matrices A_glob, B_glob, C_glob, C_glob_naive for checking
     double *A_glob = NULL;
@@ -436,16 +337,19 @@ int main(int argc, char *argv[]) {
         C_glob_naive = (double *) calloc(m * k, sizeof(double));
     }
 #endif
+********/
 
     // init matrices: fill A_loc and B_loc with random values
     init_matrix(A_loc, mb, nb);
     init_matrix(B_loc, nb, kb);
 
+/**********
     // gather A_glob, B_glob for further checking
 #ifdef CHECK_NUMERICS
     gather_glob(mb, nb, A_loc, m, n, A_glob);
     gather_glob(nb, kb, B_loc, n, k, B_glob);
 #endif
+**********/
 
     // call SUMMA (MPI), matmul_transpose, matmul (OMP), matmul_transpose (OMP)
     // take start and end times of calculations for comparison
@@ -508,7 +412,7 @@ int main(int argc, char *argv[]) {
 
     if (myrank == 0) { printf("OpenMP-transposed-Matrix-Multiplication took %f sec\n", diff_time_omp_transp); }
 
-
+/***********
 #ifdef CHECK_NUMERICS
     // gather C_glob
     gather_glob(mb, kb, C_loc, m, k, C_glob);
@@ -530,6 +434,7 @@ int main(int argc, char *argv[]) {
     free(C_glob);
     free(C_glob_naive);
 #endif
+************/
 
     // deallocate matrices
     free(A_loc);
