@@ -1,5 +1,5 @@
-// Compile MacBook: mpicc -openmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
-// Compile Cluster: mpicc -fopenmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
+// Compile MacBook: mpicc -openmp -g -Wall summa6.c -o summa6_mpi -lm
+// Compile Cluster: mpicc -fopenmp -g -Wall summa6.c -o summa6_mpi -lm
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
 // <m>, <n> and <k> must be dividable by sqrt(<number of procs>)
@@ -22,9 +22,27 @@ int k;
 
 int myrank;
 
+// set seet for random numbers generator
+unsigned long mix(unsigned long a, unsigned long b, unsigned long c)
+{
+a=a-b;  a=a-c;  a=a^(c >> 13);
+b=b-c;  b=b-a;  b=b^(a << 8);
+c=c-a;  c=c-b;  c=c^(b >> 13);
+a=a-b;  a=a-c;  a=a^(c >> 12);
+b=b-c;  b=b-a;  b=b^(a << 16);
+c=c-a;  c=c-b;  c=c^(b >> 5);
+a=a-b;  a=a-c;  a=a^(c >> 3);
+b=b-c;  b=b-a;  b=b^(a << 10);
+c=c-a;  c=c-b;  c=c^(b >> 15);
+return c;
+}
+
+// initualize matrizes with random numbers generator
 void init_matrix(double *matr, const int rows, const int cols) {
 
-    srand((unsigned int) time(NULL));
+		unsigned long seed = mix(clock(), time(NULL), getpid());
+
+    srand(seed);
 
     double rnd = 0.0;
     int j, i;
@@ -372,7 +390,7 @@ int main(int argc, char *argv[]) {
     diff_time_mpi = tend_mpi - tstart_mpi;
     double max_diff_time_mpi = 0.0;
 
-    // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
+    // Determine maximum value of calculation time across all processors in MPI_COMM_WORLD
     // and save it in max_diff_time variable on root processor (rank 0).
 
     MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
