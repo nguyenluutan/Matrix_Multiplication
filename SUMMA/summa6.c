@@ -1,5 +1,5 @@
-// Compile MacBook: mpicc -openmp -g -Wall summa6.c -o summa6_mpi -lm
-// Compile Cluster: mpicc -fopenmp -g -Wall summa6.c -o summa6_mpi -lm
+// Compile MacBook: mpicc -openmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
+// Compile Cluster: mpicc -fopenmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
 // <m>, <n> and <k> must be dividable by sqrt(<number of procs>)
@@ -25,23 +25,21 @@ int myrank;
 // set seet for random numbers generator
 unsigned long mix(unsigned long a, unsigned long b, unsigned long c)
 {
-a=a-b;  a=a-c;  a=a^(c >> 13);
-b=b-c;  b=b-a;  b=b^(a << 8);
-c=c-a;  c=c-b;  c=c^(b >> 13);
-a=a-b;  a=a-c;  a=a^(c >> 12);
-b=b-c;  b=b-a;  b=b^(a << 16);
-c=c-a;  c=c-b;  c=c^(b >> 5);
-a=a-b;  a=a-c;  a=a^(c >> 3);
-b=b-c;  b=b-a;  b=b^(a << 10);
-c=c-a;  c=c-b;  c=c^(b >> 15);
-return c;
-}
+	a=a-b;  a=a-c;  a=a^(c >> 13);
+	b=b-c;  b=b-a;  b=b^(a << 8);
+	c=c-a;  c=c-b;  c=c^(b >> 13);
+	a=a-b;  a=a-c;  a=a^(c >> 12);
+	b=b-c;  b=b-a;  b=b^(a << 16);
+	c=c-a;  c=c-b;  c=c^(b >> 5);
+	a=a-b;  a=a-c;  a=a^(c >> 3);
+	b=b-c;  b=b-a;  b=b^(a << 10);
+	c=c-a;  c=c-b;  c=c^(b >> 15);
+	return c;
+ }
 
-// initualize matrizes with random numbers generator
 void init_matrix(double *matr, const int rows, const int cols) {
 
-		unsigned long seed = mix(clock(), time(NULL), getpid());
-
+    unsigned long seed = mix(clock(), time(NULL), getpid());
     srand(seed);
 
     double rnd = 0.0;
@@ -200,6 +198,7 @@ void parse_cmdline(int argc, char *argv[]) {
 }
 
 /*********** OpenMP  ************/
+// Transpose Function
 void transpose(const int m, const int n, const double *A, double *B) {
 
     int i, j;
@@ -209,7 +208,7 @@ void transpose(const int m, const int n, const double *A, double *B) {
 		}
 	}
 }
-/***********
+// Matrix-Multiplication with transposed matrices
 void matmul_transp(const int m, const int n, const int k,
             const double *A, const double *B, double *C) {
 
@@ -227,7 +226,7 @@ void matmul_transp(const int m, const int n, const int k,
 	}
 	free(B2);
 }
-
+// Matrix-Multiplication with OpenMP Functions
 void matmul_omp(const int m, const int n, const int k,
                 const double *A, const double *B, double *C) {
 
@@ -245,7 +244,7 @@ void matmul_omp(const int m, const int n, const int k,
 		}
 	}
 }
-
+// Matrix-Multiplications with OpenMP Functions and transposed matrices
 void matmul_omp_transp(const int m, const int n, const int k,
                 const double *A, const double *B, double *C) {
 
@@ -267,7 +266,7 @@ void matmul_omp_transp(const int m, const int n, const int k,
 	}
 	free(B2);
 }
-*********/
+
 
 /************** MAIN SCRIPT ***************/
 int main(int argc, char *argv[]) {
@@ -342,33 +341,9 @@ int main(int argc, char *argv[]) {
     B_loc = (double *) calloc(nb * kb, sizeof(double));
     C_loc = (double *) calloc(mb * kb, sizeof(double));
 
-/******
-#ifdef CHECK_NUMERICS
-    // rank 0 allocates matrices A_glob, B_glob, C_glob, C_glob_naive for checking
-    double *A_glob = NULL;
-    double *B_glob = NULL;
-    double *C_glob = NULL;
-    double *C_glob_naive = NULL;
-    if (myrank == 0) {
-        A_glob = (double *) calloc(m * n, sizeof(double));
-        B_glob = (double *) calloc(n * k, sizeof(double));
-        C_glob = (double *) calloc(m * k, sizeof(double));
-        C_glob_naive = (double *) calloc(m * k, sizeof(double));
-    }
-#endif
-********/
-
     // init matrices: fill A_loc and B_loc with random values
     init_matrix(A_loc, mb, nb);
     init_matrix(B_loc, nb, kb);
-
-/**********
-    // gather A_glob, B_glob for further checking
-#ifdef CHECK_NUMERICS
-    gather_glob(mb, nb, A_loc, m, n, A_glob);
-    gather_glob(nb, kb, B_loc, n, k, B_glob);
-#endif
-**********/
 
     // call SUMMA (MPI), matmul_transpose, matmul (OMP), matmul_transpose (OMP)
     // take start and end times of calculations for comparison
@@ -376,7 +351,7 @@ int main(int argc, char *argv[]) {
     double tstart_transp, tend_transp, diff_time_transp;
     double tstart_omp, tend_omp, diff_time_omp;
     double tstart_omp_transp, tend_omp_transp, diff_time_omp_transp;
-		double tstart_naive, tend_naive, diff_time_naive;
+    double tstart_naive, tend_naive, diff_time_naive;
 
     // Take time of SUMMA run
     tstart_mpi = MPI_Wtime();
@@ -389,26 +364,26 @@ int main(int argc, char *argv[]) {
     // portion of work in SUMMA algorithm. To understand how long did
     // find out slowest processor in SUMMA by MPI_REDUCE
     diff_time_mpi = tend_mpi - tstart_mpi;
-		if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
+   // double max_diff_time_mpi = 0.0;
 
-		// double max_diff_time_mpi = 0.0; ---> STILL IN PROGRESS
-
-    // Determine maximum value of calculation time across all processors in MPI_COMM_WORLD
+    // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
     // and save it in max_diff_time variable on root processor (rank 0).
 
-    // MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD ); --> STILL IN PROGRESS
+    //MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
 
-    // if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); } --> STILL IN PROGRESS
+    //if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); }
+    if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
 
-		tstart_naive = MPI_Wtime();
+/***    tstart_naive = MPI_Wtime();
 
-		matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc );
+    matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc );
 
-		tend_naive = MPI_Wtime();
+    tend_naive = MPI_Wtime();
 
-		diff_time_naive = tend_naive - tend_naive;
-		if (myrank == 0) { printf("Naive matrix-multiplication took %f sec\n", diff_time_naive); }
-/*******
+    diff_time_naive = tend_naive - tend_naive;
+    if (myrank == 0) { printf("Naive matrix-multiplication took %f sec\n", diff_time_naive); }
+****/
+
     // take time of transposed matrix-multilplication run
     tstart_transp = MPI_Wtime();
 
@@ -441,31 +416,6 @@ int main(int argc, char *argv[]) {
     diff_time_omp_transp = tend_omp_transp - tstart_omp_transp;
 
     if (myrank == 0) { printf("OpenMP-transposed-Matrix-Multiplication took %f sec\n", diff_time_omp_transp); }
-********/
-
-/***********
-#ifdef CHECK_NUMERICS
-    // gather C_glob
-    gather_glob(mb, kb, C_loc, m, k, C_glob);
-
-    if (myrank == 0) {
-        matmul_naive(m, n, k, A_glob, B_glob, C_glob_naive);
-
-        double eps = validate(n, k, C_glob, C_glob_naive);
-        if (eps > TOL) {
-            fprintf(stderr, "ERROR: eps = %f\n", eps);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        } else {
-            printf("SUMMA: OK: eps = %f\n", eps);
-        }
-    }
-
-    free(A_glob);
-    free(B_glob);
-    free(C_glob);
-    free(C_glob_naive);
-#endif
-************/
 
     // deallocate matrices
     free(A_loc);
