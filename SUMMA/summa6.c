@@ -376,6 +376,7 @@ int main(int argc, char *argv[]) {
     double tstart_transp, tend_transp, diff_time_transp;
     double tstart_omp, tend_omp, diff_time_omp;
     double tstart_omp_transp, tend_omp_transp, diff_time_omp_transp;
+		double tstart_naive, tend_naive, diff_time_naive;
 
     // Take time of SUMMA run
     tstart_mpi = MPI_Wtime();
@@ -388,16 +389,25 @@ int main(int argc, char *argv[]) {
     // portion of work in SUMMA algorithm. To understand how long did
     // find out slowest processor in SUMMA by MPI_REDUCE
     diff_time_mpi = tend_mpi - tstart_mpi;
-    double max_diff_time_mpi = 0.0;
+		if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
+
+		// double max_diff_time_mpi = 0.0; ---> STILL IN PROGRESS
 
     // Determine maximum value of calculation time across all processors in MPI_COMM_WORLD
     // and save it in max_diff_time variable on root processor (rank 0).
 
-    MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
+    // MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD ); --> STILL IN PROGRESS
 
-    if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); }
-    if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
+    // if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); } --> STILL IN PROGRESS
 
+		tstart_naive = MPI_Wtime();
+
+		matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc );
+
+		tend_naive = MPI_Wtime();
+
+		diff_time_naive = tend_naive - tend_naive;
+		if (myrank == 0) { printf("Naive matrix-multiplication took %f sec\n", diff_time_naive); }
 /*******
     // take time of transposed matrix-multilplication run
     tstart_transp = MPI_Wtime();
