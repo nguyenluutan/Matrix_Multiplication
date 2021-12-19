@@ -1,6 +1,0 @@
-TestNo 115 C=A.B with 1x1 dot 1x1, Colab time 1.1444091796875e-05, is_all_integers True, highest 10000, lowest -10000
-1x1
-1x1
--6034.00
--7381.00
-44536954.00

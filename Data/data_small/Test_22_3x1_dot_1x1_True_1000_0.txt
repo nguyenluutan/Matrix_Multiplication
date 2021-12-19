@@ -1,0 +1,10 @@
+TestNo 22 C=A.B with 3x1 dot 1x1, Colab time 1.52587890625e-05, is_all_integers True, highest 1000, lowest 0
+3x1
+1x1
+926.0000
+605.0000
+889.0000
+227.0000
+210202.0000
+137335.0000
+201803.0000
