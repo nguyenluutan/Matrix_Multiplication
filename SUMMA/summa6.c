@@ -1,5 +1,8 @@
-// Compile MacBook: mpicc -openmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
-// Compile Cluster: mpicc -fopenmp -g -Wall -std=c99 summa4.c -o summa4_mpi -lm
+// Compile MacBook: mpicc -openmp -g -Wall -std=c99 summa6.c -o summa6_mpi -lm
+// Compile MacBook and run with host_file (more processors settings): 
+// mpicc -openmp -g -Wall -std=c99 summa6.c -o summa6_mpi -lm && mpirun --hostfile host_file --np 4 summa6_mpi 2 2 2
+
+// Compile Cluster: mpicc -fopenmp -g -Wall -std=c99 summa6.c -o summa6_mpi -lm
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
 // <m>, <n> and <k> must be dividable by sqrt(<number of procs>)
@@ -13,6 +16,7 @@
 #include <time.h>
 #include <mpi.h>
 #include <omp.h>
+#include <unistd.h> // Fix implicit declaration of function 'getpid' is invalid in C99
 
 // global matrices size
 // A[m,n], B[n,k], C[m,k]
@@ -282,8 +286,10 @@ int main(int argc, char *argv[]) {
 
     int n_proc_rows = (int)sqrt(nprocs);
     int n_proc_cols = n_proc_rows;
+
+    fprintf(stderr, "%d cols, %d rows, required: %d == %d\n", n_proc_cols, n_proc_rows, n_proc_cols * n_proc_rows, nprocs);
     if (n_proc_cols * n_proc_rows != nprocs) {
-        fprintf(stderr, "ERROR: number of proccessors must be a perfect square!\n");
+        fprintf(stderr, "ERROR: Number of proccessors must be a perfect square!\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 

@@ -1,0 +1,4 @@
+# 24. Can I oversubscribe nodes (run more processes than processors)?
+# https://www.open-mpi.org/faq/?category=running#mpirun-scheduling
+
+localhost slots=4 max_slots=20

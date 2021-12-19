@@ -14,6 +14,7 @@
 #include <mpi.h>
 #include <omp.h>
 
+
 // if CHECK_NUMERICS is defined, program will gather global matrix C
 // calculated by SUMMA to root processor and compare it with
 // C_naive, calculated by naive matrix multiply algorithm.
