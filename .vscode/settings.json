@@ -28,6 +28,7 @@
         "vector": "c",
         "*.tcc": "c",
         "optional": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "array_2d.h": "c"
     }
 }
