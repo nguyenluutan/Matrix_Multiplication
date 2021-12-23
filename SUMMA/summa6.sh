@@ -11,5 +11,5 @@ export OMP_NUM_THREADS=128 # if not using OpenMP, just comment the export out !
 
 mpirun.actual -np 1024  /home/eric.jahnke/exercise1/summa4_mpi 8192 8192 8192
 
-# Compilation on cluster: mpicc -fopenmp -g -Wall summa6.c -o summa6_mpi -lm
-# Compilation on MacBook: mpicc -openmp -g -Wall summa6.c -o summa6_mpi -lm
+# Compilation on cluster: mpicc -fopenmp -g -Wall -std=c11 summa6.c -o summa6_mpi -lm
+# Compilation on MacBook: mpicc -openmp -g -Wall -std=c11 summa6.c -o summa6_mpi -lm

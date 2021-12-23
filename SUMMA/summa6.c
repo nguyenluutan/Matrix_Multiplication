@@ -1,8 +1,6 @@
 // Compile MacBook: mpicc -openmp -g -Wall -std=c11 summa6.c -o summa6_mpi -lm
-// Compile MacBook and run with host_file (more processors settings):
-// mpicc -openmp -g -Wall -std=c11 summa6.c -o summa6_mpi -lm && mpirun --hostfile host_file --np 4 summa6_mpi 2 2 2
+// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa6_mpi 4 4 4
 
-// Compile Cluster: mpicc -fopenmp -g -Wall -std=c99 summa6.c -o summa6_mpi -lm
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
 // <m>, <n> and <k> must be dividable by sqrt(<number of procs>)
