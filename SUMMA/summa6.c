@@ -1,5 +1,5 @@
-// Compile MacBook: mpicc -openmp -g -Wall -std=c11 summa6.c -o summa6_mpi -lm
-// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa6_mpi 4 4 4
+// Compile MacBook: mpicc -openmp -g -Wall -std=c11 summa6.c -o summa6_mpi_omp -lm
+// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa6_mpi_omp 4 4 4
 
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
 // <number of procs> must be perfect square
@@ -12,15 +12,15 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
-#include <mpi.h>
+#include <sys/time.h>
+#include <pthread.h>
 #include <omp.h>
+#include <mpi.h>
 #include <unistd.h> // Fix implicit declaration of function 'getpid' is invalid in C99
 
-// global matrices size
+// matrices size
 // A[m,n], B[n,k], C[m,k]
-int m;
-int n;
-int k;
+int m, n, k;
 
 int myrank;
 
@@ -48,9 +48,7 @@ void init_matrix(double *matr, const int rows, const int cols) {
     int j, i;
     for (j = 0; j < rows; ++j) {
         for (i = 0; i < cols; ++i) {
-
             rnd = rand() * 1.0 / RAND_MAX;
-
             matr[j*cols + i] = rnd;
         }
     }
@@ -65,9 +63,6 @@ void matmul_naive(const int m, const int n, const int k, const double *A, const 
     int j, i, l;
     for (j = 0; j < m; ++j) {
         for (i = 0; i < n; ++i) {
-
-            C[j*k + i] = 0.0;
-
             for (l = 0; l < k; ++l) {
                 C[j*k + i] += A[j*n + l] * B[l*k + i];
             }
@@ -78,12 +73,10 @@ void matmul_naive(const int m, const int n, const int k, const double *A, const 
 // Local matrix addition
 // C = A + B
 void plus_matrix(const int m, const int n, double *A, double *B, double *C) {
-    int j, i;
+    int i, j;
     for (j = 0; j < m; ++j) {
         for (i = 0; i < n; ++i) {
-            int idx = j*m + i;
-
-            C[idx] = A[idx] + B[idx];
+            C[j*m + i] = A[j*m + i] + B[j*m + i];
         }
     }
 }
@@ -202,71 +195,69 @@ void parse_cmdline(int argc, char *argv[]) {
 /*********** OpenMP  ************/
 // Transpose Function
 void transpose(const int m, const int n, const double *A, double *B) {
-
-    int i, j;
-    for(j=0; j<m; j++) {
+	int i, j;
+  for(j=0; j<m; j++) {
 		for(i=0; i<n; i++) {
 			B[i*m + j] = A[j*n + i];
 		}
 	}
 }
 // Matrix-Multiplication with transposed matrices
-void matmul_transp(const int m, const int n, const int k,
-            const double *A, const double *B, double *C) {
+void matmul_transp(const int m, const int n, const int k, const double *A, const double *B, double *C) {
 
-    int i, j, l;
+  int i, j, l;
 	double *B2;
 	B2 = (double*) malloc(sizeof(double)*n*m);
-    transpose(m, n, B, B2);
+
+	transpose(m, n, B, B2);
 	for (j=0; j<m; j++) {
 		for (i=0; i<n; i++) {
-            C[j*k + i] = 0.0;
 			for (l=0; l<k; l++) {
 				C[j*k + i] += A[j*m + l] * B2[l*k + i];
 			}
 		}
 	}
 	free(B2);
+	//return C;
 }
 // Matrix-Multiplication with OpenMP Functions
-void matmul_omp(const int m, const int n, const int k,
-                const double *A, const double *B, double *C) {
+void matmul_omp(const int m, const int n, const int k, const double *A, const double *B, double *C) {
 
-    #pragma omp parallel
-	{
-		int i, j, l;
-		#pragma omp for
-		for (j=0; j<m; j++) {
-			for (i=0; i<n; i++) {
-				C[j*k + i] = 0.0;
-				for (l=0; l<k; l++) {
-					C[j*k + i] += A[j*m + l] * B[l*k + i];
-				}
+	int i, j, l;
+	#pragma omp parallel for private(i, j, l) reduction(+: C)
+	for (j=0; j<m; j++) {
+		for (i=0; i<n; i++) {
+			for (l=0; l<k; l++) {
+				C[j*k + i] += A[j*m + l] * B[l*k + i];
 			}
 		}
 	}
+	//return C;
 }
 // Matrix-Multiplications with OpenMP Functions and transposed matrices
-void matmul_omp_transp(const int m, const int n, const int k,
-                const double *A, const double *B, double *C) {
+void matmul_omp_transp(const int m, const int n, const int k, const double *A, const double *B, double *C) {
 
-    double *B2;
+	int i, j, l;
+  double *B2;
 	B2 = (double*) malloc(sizeof(double)*n*m);
-    transpose(m, n, B, B2);
-	#pragma omp parallel
-	{
-		int i, j, l;
-		#pragma omp for
-		for (j=0; j<m; j++) {
-			for (i=0; i<n; i++) {
-				C[j*k + i] = 0.0;
-				for (l=0; l<k; l++) {
-					C[j*k + i] += A[j*m + l] * B2[l*k + i];
-				}
+  transpose(m, n, B, B2);
+
+	#pragma omp parallel for private(i, j, l) reduction(+: C)
+	for (j=0; j<m; j++) {
+		for (i=0; i<n; i++) {
+			for (l=0; l<k; l++) {
+				C[j*k + i] += A[j*m + l] * B2[l*k + i];
 			}
 		}
 	}
 	free(B2);
+	printf("\nmatmul_omp_transp -matrix is:" );
+	for (j=0; j<m; j++) {
+		for (i=0; i<n; i++) {
+			printf("%4.2f", C[j*k + i]);
+		}
+		printf("\n");
+	}
 }
 
 
@@ -355,71 +346,43 @@ int main(int argc, char *argv[]) {
     double tstart_transp, tend_transp, diff_time_transp;
     double tstart_omp, tend_omp, diff_time_omp;
     double tstart_omp_transp, tend_omp_transp, diff_time_omp_transp;
-    double tstart_naive, tend_naive, diff_time_naive;
+		double tstart_naive, tend_naive, diff_time_naive;
 
-    // Take time of SUMMA run
-    tstart_mpi = MPI_Wtime();
-
-    SUMMA(comm_cart, mb, nb, kb, A_loc, B_loc, C_loc);
-
-    tend_mpi = MPI_Wtime();
-
-    // Each processor will spend different time doing its
-    // portion of work in SUMMA algorithm. To understand how long did
-    // find out slowest processor in SUMMA by MPI_REDUCE
-    diff_time_mpi = tend_mpi - tstart_mpi;
-   // double max_diff_time_mpi = 0.0;
-
-    // Determine maximum value of `etime` across all processors in MPI_COMM_WORLD
-    // and save it in max_diff_time variable on root processor (rank 0).
-
-    //MPI_Reduce( &diff_time_mpi, &max_diff_time_mpi, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD );
-
-    //if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); }
-    if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
-
-/***    tstart_naive = MPI_Wtime();
-
-    matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc );
-
-    tend_naive = MPI_Wtime();
-
-    diff_time_naive = tend_naive - tend_naive;
-    if (myrank == 0) { printf("Naive matrix-multiplication took %f sec\n", diff_time_naive); }
-****/
+		// Take the time of naive multiplication
+		tstart_naive = MPI_Wtime();
+		matmul_naive( mb, nb, kb, A_loc, B_loc, C_loc );
+		tend_naive = MPI_Wtime();
+		diff_time_naive = tend_naive - tstart_naive;
+		if (myrank == 0) { printf("Naive-Matrix-Multiplication took %f sec\n", diff_time_naive); }
 
     // take time of transposed matrix-multilplication run
     tstart_transp = MPI_Wtime();
-
     matmul_transp( mb, nb, kb, A_loc, B_loc, C_loc );
-
     tend_transp = MPI_Wtime();
-
     diff_time_transp = tend_transp - tstart_transp;
-
     if (myrank == 0) { printf("Transposed-Matrix-Multiplication took %f sec\n", diff_time_transp); }
 
     // take time of omp matrix multiplication run
     tstart_omp = MPI_Wtime();
-
     matmul_omp( mb, nb, kb, A_loc, B_loc, C_loc );
-
     tend_omp = MPI_Wtime();
-
     diff_time_omp = tend_omp - tstart_omp;
-
     if (myrank == 0) { printf("OpenMP-Matrix-Multiplication took %f sec\n", diff_time_omp); }
 
     // take time of omp AND transposed matrix multiplication
     tstart_omp_transp = MPI_Wtime();
-
     matmul_omp_transp( mb, nb, kb, A_loc, B_loc, C_loc );
-
     tend_omp_transp = MPI_Wtime();
-
     diff_time_omp_transp = tend_omp_transp - tstart_omp_transp;
-
     if (myrank == 0) { printf("OpenMP-transposed-Matrix-Multiplication took %f sec\n", diff_time_omp_transp); }
+
+		// Take time of SUMMA run
+    tstart_mpi = MPI_Wtime();
+    SUMMA(comm_cart, mb, nb, kb, A_loc, B_loc, C_loc);
+    tend_mpi = MPI_Wtime();
+    diff_time_mpi = tend_mpi - tstart_mpi;
+    //if (myrank == 0) { printf("max processor-time took %f sec\n", max_diff_time_mpi); }
+    if (myrank == 0) { printf("SUMMA took %f sec\n", diff_time_mpi); }
 
     // deallocate matrices
     free(A_loc);
