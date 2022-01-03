@@ -2,7 +2,7 @@
 Script for Matrix Multiplication with Sequential ijk Algorithm vs.
 Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 ******/
-// Compilation: gcc-11 -openmp matMult_omp.c -o matMult_omp
+// Compilation: gcc-11 -g -Wall -openmp -std=c11 omp_matMult.c -o omp_matMult
 // Run: ./matMult_omp <No. of Iterations> ----> Number of Iterations i.e. 10, 20, 100...
 /*** Standard Parameter:
 	- MAX_DIM = 2000*2000
@@ -35,26 +35,25 @@ void convert(double** matrixA, double** matrixB, int dimension);
 
 // Matrix multiplication methods
 double sequentialMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension);
-double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension);
-double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension);
+double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads);
+double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads);
 
 // Test cases
-void sequentialMultiplyTest(int dimension, int iterations, int numThreads);
+void sequentialMultiplyTest(int dimension, int iterations);
 void parallelMultiplyTest(int dimension, int iterations, int numThreads);
 void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads);
 
-// 1 Dimensional matrix on stack
-TYPE flatA[MAX_DIM];
-TYPE flatB[MAX_DIM];
+// 1 Dimensional matrix on stack (not on heap)
+double flatA[MAX_DIM];
+double flatB[MAX_DIM];
 
 // Verify multiplication
-void verifyMultiplication(double** matrixA, double** matrixB, double** result, int dimension);
+int verifyMultiplication(double** matrixA, double** matrixB, double** result, int dimension);
 
 /********** Main Script *************/
 int main(int argc, char* argv[]) {
 
-	int numThreads;
-	int iterations, dimension;
+	int numThreads, iterations, dimension;
 
 	if(argc != 2)
 	{
@@ -77,19 +76,20 @@ int main(int argc, char* argv[]) {
 	fp = fopen("OptimizedParallelMultiplyTest.txt", "w+");
 	fclose(fp);
 
-	for(dimension=200; dimension<=2000; dimension+=200) {
-		for(numThreads=16; numThreads<=1024; numThreads=numThreads*2) {
+// Run test scripts in for-loops
+	for(dimension=1200; dimension<=1400; dimension+=200) {
+		for(numThreads=16; numThreads<=32; numThreads=numThreads*2) {
 			optimizedParallelMultiplyTest(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=200; dimension<=2000; dimension+=200) {
-		for(numThreads=16; numThreads<=1024; numThreads=numThreads*2) {
+	for(dimension=1200; dimension<=1400; dimension+=200) {
+		for(numThreads=16; numThreads<=32; numThreads=numThreads*2) {
 			parallelMultiplyTest(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=200; dimension<=2000; dimension+=200){
+	for(dimension=1200; dimension<=1400; dimension+=200){
 		sequentialMultiplyTest(dimension, iterations);
 	}
 	return 0;
@@ -167,7 +167,7 @@ void displaySquareMatrix(double** matrix, int dimension) {
 /*********** Sequential Matrix Multiplication ***********/
 double sequentialMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension) {
 // Sequentiall multiply given input matrices and return resultant matrix
-	int i,j,k; // Iterators
+	int i, j, k; // Iterators
 
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
@@ -189,7 +189,7 @@ double sequentialMultiply(double** matrixA, double** matrixB, double** matrixC, 
 /*********** parallel Matrix Multiplication with OpenMP **********/
 double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads) {
 // Parallel multiply given input matrices and return resultant matrix
-	int i,j,k;
+	int i, j, k;
 
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
@@ -212,6 +212,7 @@ double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, in
 	return elapsed;
 }
 
+/*********** Optimized parallel Matrix Multiplication with OpenMP **********/
 double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads) {
 // Parallel multiply given input matrices using optimal methods and return resultant matrix
 
@@ -249,18 +250,18 @@ void convert(double** matrixA, double** matrixB, int dimension) {
 	#pragma omp parallel for
 	for(i=0; i<dimension; i++) {
 		for(j=0; j<dimension; j++) {
-			flatA[i * dimension + j] = matrixA[i][j];
-			flatB[j * dimension + i] = matrixB[i][j];
+			flatA[i*dimension + j] = matrixA[i][j];
+			flatB[j*dimension + i] = matrixB[i][j];
 		}
 	}
 }
 
 /********** Check the Results of the different Multiplications against Sequantial Calculation ***********/
-void verifyMultiplication(double** matrixA, double** matrixB, double** result, int dimension) {
+int verifyMultiplication(double** matrixA, double** matrixB, double** result, int dimension) {
 
-	int i,j,k;
+	int i, j, k;
 	double tot, sumErrors;
-	char verification;
+
 	for(i=0; i<dimension; i++) {
 		for(j=0; j<dimension; j++) {
 			tot = 0.0;
@@ -271,18 +272,11 @@ void verifyMultiplication(double** matrixA, double** matrixB, double** result, i
 			/*if(fabs(tot-result[i][j]) > THRESHOLD) {
 				printf("Result is incorrect!\n");
 				return; */
-			}
 		}
 	}
-	sumErrors = sumErrors / (dimension*dimension);
-	if(sumErrors > THRESHOLD) {
-		verification = "Matrix-Result not correct, Sum of Errors > Threshold!";
-	}
-	else {
-		verification = "Matrix-Result correct, Sum of Errors < Threshold!";
-	}
+	sumErrors = fabs(sumErrors/(dimension*dimension) - THRESHOLD);
 	//printf("Result is correct!\n");
-	return verification;
+	return sumErrors;
 }
 
 /************* Test Scripts for Multiplications ***************/
@@ -295,7 +289,7 @@ void sequentialMultiplyTest(int dimension, int iterations) {
 	printf("----------------------------------\n");
 	printf("Test : Sequential Multiply        \n");
 	printf("----------------------------------\n");
-	printf("Dimension : %d\n", dimension);
+	printf("Dimension: %d\n", dimension);
 	printf("..................................\n");
 
 	// File write
@@ -338,7 +332,6 @@ void sequentialMultiplyTest(int dimension, int iterations) {
 	double sumSquared = 0.0;
 
 	// Statistical analyze
-	int i;
 	for(i=0; i<iterations; i++) {
 		sum += opmLatency[i];
 		sumSquared += pow(opmLatency[i], 2.0);
@@ -374,14 +367,14 @@ void parallelMultiplyTest(int dimension, int iterations, int numThreads) {
 	printf("----------------------------------\n");
 	printf("Test : Parallel Multiply          \n");
 	printf("----------------------------------\n");
-	printf("Dimension : %d\n", dimension);
+	printf("Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	printf("..................................\n");
 
 	// File write
 	fprintf(fp, "----------------------------------\n");
 	fprintf(fp, "Test : Parallel Multiply          \n");
 	fprintf(fp, "----------------------------------\n");
-	fprintf(fp, "Dimension : %d\n", dimension);
+	fprintf(fp, "Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	fprintf(fp, "..................................\n");
 
 	double* opmLatency = malloc(iterations * sizeof(double));
@@ -395,13 +388,13 @@ void parallelMultiplyTest(int dimension, int iterations, int numThreads) {
 		double** matrixResult = zeroSquareMatrix(dimension);
 		opmLatency[i] = parallelMultiply(matrixA, matrixB, matrixResult, dimension, numThreads);
 		// check the result of the simple OpenMP parallel Multiplication
-		matrixCheck[i] = verifyMultiplication_omp(matrixA, matrixB, matrixResult, dimension);
+		//matrixCheck[i] = verifyMultiplication_omp(matrixA, matrixB, matrixResult, dimension);
 		free(matrixResult);
 
 		// Console write
-		printf("%d.\t%f\t%f\n", i+1, opmLatency[i], matrixCheck[i]);
+		printf("%d.\t%f\n", i+1, opmLatency[i]);
 		// File write
-		fprintf(fp, "%d.\t%f\t%f\n", i+1, opmLatency[i], matrixCheck[i]);
+		fprintf(fp, "%d.\t%f\n", i+1, opmLatency[i]);
 	}
 
 	// Console write
@@ -420,7 +413,6 @@ void parallelMultiplyTest(int dimension, int iterations, int numThreads) {
 	double sumSquared = 0.0;
 
 	// Statistical analyze
-	int i;
 	for(i=0; i<iterations; i++) {
 		sum += opmLatency[i];
 		sumSquared += pow(opmLatency[i], 2.0);
@@ -457,14 +449,14 @@ void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads
 	printf("----------------------------------\n");
 	printf("Test : Optimized Parallel Multiply\n");
 	printf("----------------------------------\n");
-	printf("Dimension : %d\n", dimension);
+	printf("Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	printf("..................................\n");
 
 	// File write
 	fprintf(fp, "----------------------------------\n");
 	fprintf(fp, "Test : Optimized Parallel Multiply\n");
 	fprintf(fp, "----------------------------------\n");
-	fprintf(fp, "Dimension : %d\n", dimension);
+	fprintf(fp, "Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	fprintf(fp, "..................................\n");
 
 	double* opmLatency = malloc(iterations * sizeof(double));
@@ -478,13 +470,13 @@ void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads
 		double** matrixResult = zeroSquareMatrix(dimension);
 		opmLatency[i] = optimizedParallelMultiply(matrixA, matrixB, matrixResult, dimension, numThreads);
 		// check the result of the simple OpenMP parallel Multiplication
-		matrixCheck[i] = verifyMultiplication_omp_opti(matrixA, matrixB, matrixResult, dimension);
+		//matrixCheck[i] = verifyMultiplication_omp_opti(matrixA, matrixB, matrixResult, dimension);
 		free(matrixResult);
 
 		// Console write
-		printf("%d.\t%f\t%f\n", i+1, opmLatency[i], matrixCheck[i]);
+		printf("%d.\t%f\n", i+1, opmLatency[i]);
 		// File write
-		fprintf(fp, "%d.\t%f\t%f\n", i+1, opmLatency[i], matrixCheck[i]);
+		fprintf(fp, "%d.\t%f\n", i+1, opmLatency[i]);
 	}
 
 	// Console write
@@ -503,7 +495,6 @@ void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads
 	double sumSquared = 0.0;
 
 	// Statistical analyze
-	int i;
 	for(i=0; i<iterations; i++) {
 		sum += opmLatency[i];
 		sumSquared += pow(opmLatency[i], 2.0);
