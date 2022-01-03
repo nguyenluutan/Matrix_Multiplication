@@ -21,6 +21,7 @@ Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 #include <omp.h>
 #include <math.h>
 
+// Parameter
 #define MAX_DIM 2000*2000
 #define MAX_VAL 10
 #define MIN_VAL 1
@@ -96,7 +97,7 @@ int main(int argc, char* argv[]) {
 }
 
 
-/**************** Functions to call in Main-script or Test-scrpts *************/
+/**************** Functions to call in Main-script or Test-scripts *************/
 // set seet for random numbers generator
 unsigned long mix(unsigned long a, unsigned long b, unsigned long c)
 {
@@ -216,23 +217,21 @@ double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, in
 double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads) {
 // Parallel multiply given input matrices using optimal methods and return resultant matrix
 
-	int i, j, k, iOff, jOff;
+	int i, j, k;
 	double tot;
 
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 	/* Head */
 	convert(matrixA, matrixB, dimension);
-	#pragma omp parallel shared(matrixC) private(i, j, k, iOff, jOff, tot) num_threads(numThreads)
+	#pragma omp parallel shared(matrixC) private(i, j, k, tot) num_threads(numThreads)
 	{
 		#pragma omp for schedule(static)
 		for(i=0; i<dimension; i++) {
-			iOff = i * dimension;
 			for(j=0; j<dimension; j++) {
-				jOff = j * dimension;
-				tot = 0;
+				tot = 0.0;
 				for(k=0; k<dimension; k++) {
-					tot += flatA[iOff + k] * flatB[jOff + k];
+					tot += flatA[i*dimension + k] * flatB[j*dimension + k];
 				}
 				matrixC[i][j] = tot;
 			}
