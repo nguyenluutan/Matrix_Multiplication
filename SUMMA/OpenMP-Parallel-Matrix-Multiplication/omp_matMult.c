@@ -10,7 +10,7 @@ Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 	- MIN_VAL = 1
 	- THRESHOLD = 0.001
 	- iteration = 10
-	- dimension = 200 to 2000 (iterated in for()-loop !!)
+	- dimension = 128 to 2048 (iterated in for()-loop !!)
 	- numThreads = 16 to 1024 (iterated in for()-loop !!)
 ***/
 #include <stdio.h>
@@ -78,19 +78,19 @@ int main(int argc, char* argv[]) {
 	fclose(fp);
 
 // Run test scripts in for-loops
-	for(dimension=1200; dimension<=1400; dimension+=200) {
+	for(dimension=128; dimension<=2024; dimension=dimension*2) {
 		for(numThreads=16; numThreads<=32; numThreads=numThreads*2) {
 			optimizedParallelMultiplyTest(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=1200; dimension<=1400; dimension+=200) {
+	for(dimension=128; dimension<=2024; dimension=dimension*2) {
 		for(numThreads=16; numThreads<=32; numThreads=numThreads*2) {
 			parallelMultiplyTest(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=1200; dimension<=1400; dimension+=200){
+	for(dimension=128; dimension<=2024; dimension=dimension*2){
 		sequentialMultiplyTest(dimension, iterations);
 	}
 	return 0;
