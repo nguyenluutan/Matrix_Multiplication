@@ -1,5 +1,5 @@
-// Compile MacBook: mpicc -g -Wall -std=c11 summa7.c -o summa7_mpi
-// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa7_mpi
+// Compile MacBook: mpicc -g -Wall -std=c11 summa7.c -o summa7 -lm
+// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa7 <dimension>
 // Compile Cluster: mpicc -g -Wall -std=c11 summa7.c -o summa7_mpi
 // ATTENTION: CURRENT VERSION WORKS ONLY WITH SQUARED MATRICES !
 
@@ -23,158 +23,157 @@ const int ITERATIONS = 10; // Number of Iterations to run through while testing
 // 1 Dimensional matrix on stack (not on heap)
 double flatA[MAX_DIM];
 double flatB[MAX_DIM];
+/********	 declare important parameters **********/
+int myrank; // Rank for MPI-Communicator
+int dimension; // size of the matrices; rows x cols
 
 // Method signatures
+void parse_cmdline(int argc, char *argv[]);
 double** randomSquareMatrix(int dimension);
 double** zeroSquareMatrix(int dimension);
 void displaySquareMatrix(double** matrix, int dimension);
 void convert(double** matrixA, double** matrixB, int dimension);
 // Matrix multiplication methods
 void sequentialMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension);
+void plus_matrix(double** matrixA, double** matrixB, double** matrixC, int dimension);
 // Matrix test methods
-double SUMMA(MPI_Comm comm_cart, int block_size, int dimension, int myrank,
-	double** A_loc, double** B_loc, double** C_loc);
+double SUMMA(MPI_Comm comm_cart, int block_size, double** A_loc, double** B_loc, double** C_loc);
 
+/************** MAIN SCRIPT ***************/
+int main(int argc, char *argv[]) {
+	/********	 declare important parameters **********/
+	FILE* fp;
+	fp = fopen("SUMMATest.txt", "w+"); 		// Create SUMMA Multiply test log
+	fclose(fp);
 
-	/************** MAIN SCRIPT ***************/
-	int main(int argc, char *argv[]) {
-		/********	 declare important parameters **********/
-		int dimension; // size of the matrices; rows x cols
-		int myrank; // Rank for MPI-Communicator
-		int block_size; // size of each block for each processor of MPI
-		int nprocs; // nprocs MUST be perfect square !
-		int n_proc_rows, n_proc_cols; // rows and columns of the cartesian grid-system
+	int block_size; // size of each block for each processor of MPI
+	int nprocs; // nprocs MUST be perfect square !
+	int n_proc_rows, n_proc_cols; // rows and columns of the cartesian grid-system
 
-		// Create SUMMA Multiply test log
-		FILE* fp;
-		fp = fopen("SUMMATest.txt", "w+");
-		fclose(fp);
+	// Initialize MPI
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank); // process rank
+	MPI_Comm_size(MPI_COMM_WORLD, &nprocs); // number of processes
 
-		/* HERE FOR LOOP OVER MATRIX DIMENSION SIZES !!! */
-		for(dimension=64; dimension<=128; dimension=dimension*2) {
-			// Initialize MPI
-			MPI_Init(&argc, &argv);
-			MPI_Comm_rank(MPI_COMM_WORLD, &myrank); // process rank
-			MPI_Comm_size(MPI_COMM_WORLD, &nprocs); // number of processes
+	parse_cmdline(argc, argv); // dimension check!
 
-			n_proc_rows = (int)sqrt((int)nprocs); // PERFECT SQUARE !
-			n_proc_cols = n_proc_rows; // assign the same value
-			fprintf(stderr, "%d cols, %d rows, required: %d == %d\n",
-			n_proc_cols, n_proc_rows, n_proc_cols*n_proc_rows, nprocs);
-			if (n_proc_cols*n_proc_rows != nprocs) {
-				fprintf(stderr, "ERROR: Number of proccessors must be a perfect square!\n");
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
-
-			if (myrank == 0) {
-				// open the Text-file to write the results
-				FILE* fp;
-				fp = fopen("SUMMATest.txt", "a+");
-
-				// Console write
-				printf("----------------------------------\n");
-				printf("Test : SUMMA Multiplication        \n");
-				printf("----------------------------------\n");
-				printf("Dimension: %d\n", dimension);
-				printf("..................................\n");
-				// File write
-				fprintf(fp, "----------------------------------\n");
-				fprintf(fp, "Test : SUMMA Multiplication        \n");
-				fprintf(fp, "----------------------------------\n");
-				fprintf(fp, "Dimension : %d\n", dimension);
-				fprintf(fp, "..................................\n");
-			}
-			// each proc determines its local block sizes
-			block_size = dimension / n_proc_rows; // n_proc_rows == n_proc_cols !!
-			// create 2D cartesian communicator from `nprocs` procs
-			int ndims = 2;
-			const int dims[2] = {n_proc_rows, n_proc_cols};
-			const int periods[2] = {0, 0}; // We do not need periodicity in dimensions for SUMMA, so periods are 0 !
-			int reorder = 0; // We do not need to reorder ranking, so reorder is 0 !
-			MPI_Comm comm_cart; // local Communicator comm_cart
-			// Create 2D cartesian communicator using MPI_Cart_Create function
-			// We do not need periodicity in dimensions for SUMMA, so periods are 0 !
-			// Dimensions of the new communicator is [n_proc_rows, n_proc_cols].
-			MPI_Cart_create( MPI_COMM_WORLD, ndims, dims, periods, reorder, &comm_cart );
-			// my rank in the new communicator
-			int my_grid_rank;
-			MPI_Comm_rank( comm_cart, &my_grid_rank );
-			// my local coordinates in the grid system
-			int my_coords[2];
-			MPI_Cart_coords( comm_cart, my_grid_rank, ndims, my_coords );
-			// Print my location in the 2D cartesian topology.
-			printf("[MPI process %d] I am located at (%d, %d) in the initial 2D cartesian topology.\n",
-			myrank, my_coords[0], my_coords[1]);
-
-			// each processor allocates memory for local portions of A, B and C
-			double** A_loc = NULL;
-			double** B_loc = NULL;
-			double** C_loc = NULL;
-			A_loc = (double**) calloc(block_size*block_size, sizeof(double));
-			B_loc = (double**) calloc(block_size*block_size, sizeof(double));
-			C_loc = (double**) calloc(block_size*block_size, sizeof(double));
-			// init matrices: fill A_loc and B_loc with random values and C_loc with zeros
-			A_loc = randomSquareMatrix(block_size);
-			B_loc = randomSquareMatrix(block_size);
-			C_loc = zeroSquareMatrix(block_size);
-			// define array to save measured calculation times of the SUMMA
-			double* mpiLatency = malloc(ITERATIONS * sizeof(double));
-
-			// Iterate and measure performance
-			int i;
-			for(i=0; i<ITERATIONS; i++) {
-				mpiLatency[i] = SUMMA(comm_cart, block_size, dimension, myrank, A_loc, B_loc, C_loc);
-				free(C_loc);
-
-				// Console write
-				printf("%d.\t%f\n", i+1, mpiLatency[i]);
-				// File write
-				fprintf(fp, "%d.\t%f\n", i+1, mpiLatency[i]);
-			}
-			// Console write
-			printf("\n");
-			printf("----------------------------------\n");
-			printf("Analyze Measurements              \n");
-			printf("----------------------------------\n");
-			// File write
-			fprintf(fp, "\n");
-			fprintf(fp, "----------------------------------\n");
-			fprintf(fp, "Analyze Measurements              \n");
-			fprintf(fp, "----------------------------------\n");
-
-			double sum = 0.0;
-			double sumSquared = 0.0;
-
-			// Statistical analyze
-			for(i=0; i<ITERATIONS; i++) {
-				sum += mpiLatency[i];
-				sumSquared += pow(mpiLatency[i], 2.0);
-			}
-
-			double mean = sum / ITERATIONS;
-			double squareMean = sumSquared / ITERATIONS;
-			double standardDeviation = sqrt(squareMean - pow(mean, 2.0));
-
-			// Console write
-			printf("Mean               : %f\n", mean);
-			printf("Standard Deviation : %f\n", standardDeviation);
-			printf("----------------------------------\n");
-			//File write
-			fprintf(fp, "Mean               : %f\n", mean);
-			fprintf(fp, "Standard Deviation : %f\n", standardDeviation);
-			fprintf(fp, "----------------------------------\n");
-
-			// Releasing memory
-			fclose(fp);
-			free(mpiLatency);
-			// deallocate matrices
-			free(A_loc);
-			free(B_loc);
-
-			MPI_Finalize();
-		}
-		return 0;
+	n_proc_rows = (int)sqrt((int)nprocs); // PERFECT SQUARE !
+	n_proc_cols = n_proc_rows; // assign the same value
+	fprintf(stderr, "%d cols, %d rows, required: %d == %d\n",
+	n_proc_cols, n_proc_rows, n_proc_cols*n_proc_rows, nprocs);
+	if (n_proc_cols*n_proc_rows != nprocs) {
+		fprintf(stderr, "ERROR: Number of proccessors must be a perfect square!\n");
+		MPI_Abort(MPI_COMM_WORLD, 1);
 	}
+
+	// open the Text-file to write the results
+	//FILE* fp;
+	fp = fopen("SUMMATest.txt", "a+");
+
+	// Console write
+	printf("----------------------------------\n");
+	printf("Test : SUMMA Multiplication        \n");
+	printf("----------------------------------\n");
+	printf("Dimension: %d\n", dimension);
+	printf("..................................\n");
+	// File write
+	fprintf(fp, "----------------------------------\n");
+	fprintf(fp, "Test : SUMMA Multiplication        \n");
+	fprintf(fp, "----------------------------------\n");
+	fprintf(fp, "Dimension : %d\n", dimension);
+	fprintf(fp, "..................................\n");
+
+	// each proc determines its local block sizes
+	block_size = dimension / n_proc_rows; // n_proc_rows == n_proc_cols !!
+	// create 2D cartesian communicator from `nprocs` procs
+	int ndims = 2;
+	const int dims[2] = {n_proc_rows, n_proc_cols};
+	const int periods[2] = {0, 0}; // We do not need periodicity in dimensions for SUMMA, so periods are 0 !
+	int reorder = 0; // We do not need to reorder ranking, so reorder is 0 !
+	MPI_Comm comm_cart; // local Communicator comm_cart
+	// Create 2D cartesian communicator using MPI_Cart_Create function
+	// We do not need periodicity in dimensions for SUMMA, so periods are 0 !
+	// Dimensions of the new communicator is [n_proc_rows, n_proc_cols].
+	MPI_Cart_create( MPI_COMM_WORLD, ndims, dims, periods, reorder, &comm_cart );
+	// my rank in the new communicator
+	int my_grid_rank;
+	MPI_Comm_rank( comm_cart, &my_grid_rank );
+	// my local coordinates in the grid system
+	int my_coords[2];
+	MPI_Cart_coords( comm_cart, my_grid_rank, ndims, my_coords );
+	// Print my location in the 2D cartesian topology.
+	printf("[MPI process %d] I am located at (%d, %d) in the initial 2D cartesian topology.\n",
+	myrank, my_coords[0], my_coords[1]);
+
+	// each processor allocates memory for local portions of A, B and C
+	double** A_loc = NULL;
+	double** B_loc = NULL;
+	double** C_loc = NULL;
+	A_loc = (double**) calloc(block_size*block_size, sizeof(double));
+	B_loc = (double**) calloc(block_size*block_size, sizeof(double));
+	C_loc = (double**) calloc(block_size*block_size, sizeof(double));
+	// init matrices: fill A_loc and B_loc with random values and C_loc with zeros
+	A_loc = randomSquareMatrix(block_size);
+	B_loc = randomSquareMatrix(block_size);
+	C_loc = zeroSquareMatrix(block_size);
+	// define array to save measured calculation times of the SUMMA
+	double* mpiLatency = malloc(ITERATIONS * sizeof(double));
+
+	// Iterate and measure performance
+	int i;
+	for(i=0; i<ITERATIONS; i++) {
+		mpiLatency[i] = SUMMA(comm_cart, block_size, A_loc, B_loc, C_loc);
+		free(C_loc);
+
+		// Console write
+		printf("%d.\t%f\n", i+1, mpiLatency[i]);
+		// File write
+		fprintf(fp, "%d.\t%f\n", i+1, mpiLatency[i]);
+	}
+	// Console write
+	printf("\n");
+	printf("----------------------------------\n");
+	printf("Analyze Measurements              \n");
+	printf("----------------------------------\n");
+	// File write
+	fprintf(fp, "\n");
+	fprintf(fp, "----------------------------------\n");
+	fprintf(fp, "Analyze Measurements              \n");
+	fprintf(fp, "----------------------------------\n");
+
+	double sum = 0.0;
+	double sumSquared = 0.0;
+
+	// Statistical analyze
+	for(i=0; i<ITERATIONS; i++) {
+		sum += mpiLatency[i];
+		sumSquared += pow(mpiLatency[i], 2.0);
+	}
+
+	double mean = sum / ITERATIONS;
+	double squareMean = sumSquared / ITERATIONS;
+	double standardDeviation = sqrt(squareMean - pow(mean, 2.0));
+
+	// Console write
+	printf("Mean               : %f\n", mean);
+	printf("Standard Deviation : %f\n", standardDeviation);
+	printf("----------------------------------\n");
+	//File write
+	fprintf(fp, "Mean               : %f\n", mean);
+	fprintf(fp, "Standard Deviation : %f\n", standardDeviation);
+	fprintf(fp, "----------------------------------\n");
+
+	// Releasing memory
+	fclose(fp);
+	free(mpiLatency);
+	// deallocate matrices
+	free(A_loc);
+	free(B_loc);
+
+	MPI_Finalize();
+
+	return 0;
+}
 
 	/********** REST OF THE FUNCTIONS ***************/
 	/****** Function to set seed for a random numbers generator **********/
@@ -289,7 +288,7 @@ double SUMMA(MPI_Comm comm_cart, int block_size, int dimension, int myrank,
 	}
 
 	/********* SUMMA with MPI ***********/
-	double SUMMA(MPI_Comm comm_cart, int block_size, int dimension, int myrank, double** A_loc, double** B_loc, double** C_loc) {
+	double SUMMA(MPI_Comm comm_cart, int block_size, double** A_loc, double** B_loc, double** C_loc) {
 		// number of local blocks of given block_size
 		int nBlocks;
 		// number of blocks defined by size of matrices and local sizes of each process
@@ -363,34 +362,32 @@ double SUMMA(MPI_Comm comm_cart, int block_size, int dimension, int myrank,
 		return elapsed; // return elapsed calculation time to Latency-Variable !
 	}
 
-	/* --> NOT NEEDED AT THE MOMENT, BECAUSE DIMENSION IN FOR-LOOP AND ITERATIONS AS CONSTANT DEFINED!
+	// --> NOT NEEDED AT THE MOMENT, BECAUSE DIMENSION IN FOR-LOOP AND ITERATIONS AS CONSTANT DEFINED!
 	void parse_cmdline(int argc, char *argv[]) {
-	if (argc != 3) {
-	if (myrank == 0) {
-	fprintf(stderr, "USAGE:\n"
-	"mpirun --np <number of procs> ./summa --args <dimension> <iterations>\n"
-	"<number of procs> must be perfect square\n"
-	"<dimension> must be dividable by sqrt(<number of procs>)\n"
-	"NOTE: current version of program works with square matrices only\n");
-	int i;
-	for (i=0; i<argc; i++) {
-	printf("%s\n", argv[i]);
-}
-MPI_Abort(MPI_COMM_WORLD, 1);
-}
-}
+		if (argc != 2) {
+			if (myrank == 0) {
+				fprintf(stderr, "USAGE:\n"
+				"mpirun --np <number of procs> ./summa --args <dimension>\n"
+				"<number of procs> must be perfect square\n"
+				"<dimension> must be dividable by sqrt(<number of procs>)\n"
+				"NOTE: current version of program works with square matrices only\n");
+				int i;
+				for (i=0; i<argc; i++) {
+					printf("%s\n", argv[i]);
+				}
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+		}
 
-dimension = atoi(argv[1]);
-iterations = atoi(argv[2]);
+		dimension = atoi(argv[1]);
 
-if ( !(dimension>0 && iterations>0) ) {
-if (myrank == 0) {
-fprintf(stderr, "ERROR: dimension & iterations must be positive integers\n");
-MPI_Abort(MPI_COMM_WORLD, 1);
-}
-}
-if (myrank == 0) {
-printf("dimension = %d, iterations = %d\n", dimension, iterations);
-}
-}
-*/
+		if ( !(dimension>0) ) {
+			if (myrank == 0) {
+				fprintf(stderr, "ERROR: dimension must be positive integers\n");
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+		}
+		if (myrank == 0) {
+			printf("dimension = %d\n", dimension);
+		}
+	}
