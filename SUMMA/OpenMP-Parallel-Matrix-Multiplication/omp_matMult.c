@@ -216,10 +216,9 @@ double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, in
 /*********** Optimized parallel Matrix Multiplication with OpenMP **********/
 double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads) {
 // Parallel multiply given input matrices using optimal methods and return resultant matrix
-
 	int i, j, k;
 	double tot;
-
+	// take the time
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 	/* Head */
@@ -273,7 +272,7 @@ int verifyMultiplication(double** matrixA, double** matrixB, double** result, in
 				return; */
 		}
 	}
-	sumErrors = fabs(sumErrors/(dimension*dimension) - THRESHOLD);
+	sumErrors = fabs((sumErrors/(dimension*dimension)) - THRESHOLD);
 	//printf("Result is correct!\n");
 	return sumErrors;
 }

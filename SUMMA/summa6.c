@@ -1,5 +1,5 @@
 // Compile MacBook: mpicc -openmp -g -Wall -std=c11 summa6.c -o summa6_mpi_omp -lm
-// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa6_mpi_omp 1024 1024 1024
+// Compile MacBook and run with host_file (more processors settings): mpirun --hostfile host_file --np 4 summa6_mpi_omp 128 128 128
 // Compile Cluster: mpicc -fopenmp -g -Wall -std=c11 summa6.c -o summa6_mpi_omp -lm
 
 // Run: mpirun --np <number of procs> ./summa <m> <n> <k>
@@ -47,7 +47,6 @@ void init_matrix(double *matr, const int rows, const int cols) {
 
     double rnd = 0.0;
     int j, i;
-		#pragma omp parallel for default(none) private(j,i,rnd) shared(matr)
     for (j = 0; j < rows; ++j) {
         for (i = 0; i < cols; ++i) {
             rnd = rand() * 1.0 / RAND_MAX;
