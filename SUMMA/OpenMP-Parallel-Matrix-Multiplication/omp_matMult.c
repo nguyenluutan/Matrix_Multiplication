@@ -3,7 +3,7 @@ Script for Matrix Multiplication with Sequential ijk Algorithm vs.
 Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 ******/
 // Compilation: gcc-11 -g -Wall -openmp -std=c11 omp_matMult.c -o omp_matMult
-// Run: ./matMult_omp <No. of Iterations> ----> Number of Iterations i.e. 10, 20, 100...
+// Run: ./omp_matMult <No. of Iterations> ----> Number of Iterations i.e. 10, 20, 100...
 /*** Standard Parameter:
 	- MAX_DIM = 2000*2000
 	- MAX_VAL = 10
@@ -78,19 +78,19 @@ int main(int argc, char* argv[]) {
 	fclose(fp);
 
 // Run test scripts in for-loops
-	for(dimension=128; dimension<=2024; dimension=dimension*2) {
-		for(numThreads=16; numThreads<=32; numThreads=numThreads*2) {
+	for(dimension=16; dimension<=2024; dimension=dimension*2) {
+		for(numThreads=4; numThreads<=64; numThreads=numThreads*2) {
 			optimizedParallelMultiplyTest(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=128; dimension<=2024; dimension=dimension*2) {
-		for(numThreads=16; numThreads<=32; numThreads=numThreads*2) {
+	for(dimension=16; dimension<=2024; dimension=dimension*2) {
+		for(numThreads=4; numThreads<=64; numThreads=numThreads*2) {
 			parallelMultiplyTest(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=128; dimension<=2024; dimension=dimension*2){
+	for(dimension=16; dimension<=2024; dimension=dimension*2){
 		sequentialMultiplyTest(dimension, iterations);
 	}
 	return 0;
