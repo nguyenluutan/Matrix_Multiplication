@@ -3,7 +3,7 @@ Script for Matrix Multiplication with Sequential ijk Algorithm vs.
 Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 ******/
 // Compilation MacBook: gcc -openmp -g -Wall -std=c99 omp_matMult.c -o omp_matMult -lm
-// Compilation Cluster: gcc -fopenmp -g -Wall -std=c99 omp_matMult.c -o omp_matMult -lm
+// Compilation Cluster: gcc -fopenmp -g -Wall -std=c99 omp_matMult.c -o omp_mat -lm
 // Run: ./omp_matMult <No. of Iterations> ----> Number of Iterations i.e. 10, 20, 100...
 /*** Standard Parameter:
 	- MAX_DIM = 2000*2000
