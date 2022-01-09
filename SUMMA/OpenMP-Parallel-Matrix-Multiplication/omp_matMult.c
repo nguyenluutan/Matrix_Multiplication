@@ -2,7 +2,8 @@
 Script for Matrix Multiplication with Sequential ijk Algorithm vs.
 Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 ******/
-// Compilation: gcc-11 -g -Wall -openmp -std=c11 omp_matMult.c -o omp_matMult
+// Compilation MacBook: gcc -openmp -g -Wall -std=c99 omp_matMult.c -o omp_matMult -lm
+// Compilation Cluster: gcc -fopenmp -g -Wall -std=c99 omp_matMult.c -o omp_matMult -lm
 // Run: ./omp_matMult <No. of Iterations> ----> Number of Iterations i.e. 10, 20, 100...
 /*** Standard Parameter:
 	- MAX_DIM = 2000*2000
@@ -10,46 +11,50 @@ Parallel Algorithm with (standard) OpenMP and an optimized OpenMP version
 	- MIN_VAL = 1
 	- THRESHOLD = 0.001
 	- iteration = 10
-	- dimension = 128 to 2048 (iterated in for()-loop !!)
+	- dimension = 16 to 2048 (iterated in for()-loop !!)
 	- numThreads = 16 to 1024 (iterated in for()-loop !!)
 ***/
+
+// Headers
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <time.h>
 #include <sys/time.h>
 #include <pthread.h>
 #include <omp.h>
-#include <math.h>
+#include <unistd.h> // Fix implicit declaration of function 'getpid' is invalid in C99
 
-// Parameter
-#define MAX_DIM 2000*2000
-#define MAX_VAL 10
+// Parameters
 #define MIN_VAL 1
+#define MAX_VAL 10
 
+// Constants
 const double THRESHOLD = 0.001; // Threshold to check for accuracy of different calculations
+const int MIN_DIM = 16;
+const int MAX_DIM = 16384;
+const int MIN_THREAD = 2;
+const int MAX_THREAD = 128;
 
-// Method signatures
-double** randomSquareMatrix(int dimension);
-double** zeroSquareMatrix(int dimension);
-void displaySquareMatrix(double** matrix, int dimension);
-void convert(double** matrixA, double** matrixB, int dimension);
+// matrix creation method
+unsigned long mix(unsigned long a, unsigned long b, unsigned long c);
+double* randomMatrix(int dimension);
+double* zeroMatrix(int dimension);
+//void displayMatrix(double* matrix, int dimension);
 
-// Matrix multiplication methods
-double sequentialMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension);
-double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads);
-double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads);
+// matrix multiplication methods
+double sequentialMultiply(double* matrixA, double* matrixB, double* matrixC, int dimension);
+double parallelMultiply_omp_static(double* matrixA, double* matrixB, double* matrixC, int dimension, int numThreads);
+double parallelMultiply_omp_dynamic(double* matrixA, double* matrixB, double* matrixC, int dimension, int numThreads);
 
-// Test cases
+// test cases
 void sequentialMultiplyTest(int dimension, int iterations);
-void parallelMultiplyTest(int dimension, int iterations, int numThreads);
-void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads);
+void parallelMultiplyTest_omp_static(int dimension, int iterations, int numThreads);
+void parallelMultiplyTest_omp_dynamic(int dimension, int iterations, int numThreads);
 
-// 1 Dimensional matrix on stack (not on heap)
-double flatA[MAX_DIM];
-double flatB[MAX_DIM];
+// verify multiplication
+int verifyMultiplication(double* matrixA, double* matrixB, double* result, int dimension);
 
-// Verify multiplication
-int verifyMultiplication(double** matrixA, double** matrixB, double** result, int dimension);
 
 /********** Main Script *************/
 int main(int argc, char* argv[]) {
@@ -66,33 +71,33 @@ int main(int argc, char* argv[]) {
 	// Generate Necessary files
 	// Create Sequential Multiply test log
 	FILE* fp;
-	fp = fopen("SequentialMultiplyTest.txt", "w+");
+	fp = fopen("sequentialMultiplyTest.txt", "w+");
 	fclose(fp);
 
-	// Create Parallel Multiply test log
-	fp = fopen("ParallelMultiplyTest.txt", "w+");
+	// Create Parallel Multiply OMP static test log
+	fp = fopen("parallelMultiplyTest_omp_static.txt", "w+");
 	fclose(fp);
 
-	// Create Optimized Parallel Multiply test log
-	fp = fopen("OptimizedParallelMultiplyTest.txt", "w+");
+	// Create Parallel Multiply OMP guided test log
+	fp = fopen("parallelMultiplyTest_omp_dynamic.txt", "w+");
 	fclose(fp);
 
-// Run test scripts in for-loops
-	for(dimension=16; dimension<=2024; dimension=dimension*2) {
-		for(numThreads=4; numThreads<=64; numThreads=numThreads*2) {
-			optimizedParallelMultiplyTest(dimension, iterations, numThreads);
+	for(dimension=MIN_DIM; dimension<=MAX_DIM; dimension=dimension*2) {
+		for(numThreads=MIN_THREAD; numThreads<=MAX_THREAD; numThreads=numThreads*2) {
+			parallelMultiplyTest_omp_static(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=16; dimension<=2024; dimension=dimension*2) {
-		for(numThreads=4; numThreads<=64; numThreads=numThreads*2) {
-			parallelMultiplyTest(dimension, iterations, numThreads);
+	for(dimension=MIN_DIM; dimension<=MAX_DIM; dimension=dimension*2) {
+		for(numThreads=MIN_THREAD; numThreads<=MAX_THREAD; numThreads=numThreads*2) {
+			parallelMultiplyTest_omp_dynamic(dimension, iterations, numThreads);
 		}
 	}
 
-	for(dimension=16; dimension<=2024; dimension=dimension*2){
+	for(dimension=MIN_DIM; dimension<=MAX_DIM; dimension=dimension*2){
 		sequentialMultiplyTest(dimension, iterations);
 	}
+	// return successfully
 	return 0;
 }
 
@@ -113,49 +118,43 @@ unsigned long mix(unsigned long a, unsigned long b, unsigned long c)
 	return c;
  }
 
-/******** create a random square matrix ************/
-double** randomSquareMatrix(int dimension) {
-// Generate 2 dimensional random TYPE matrix
-	double** matrix = malloc(dimension * sizeof(double*));
-	int i,j; // Iterators
-	for(i=0; i<dimension; i++) {
-		matrix[i] = malloc(dimension * sizeof(double));
-	}
-// set Random seed
- 	unsigned long seed = mix(clock(), time(NULL), getpid()); // call mix-function
- 	srand(seed);
+ /************ create square matrizes A & B with random values ************/
+ double* randomMatrix(const int dimension) {
+	 	// generate 2-dimensional random matrix with doubles
+		double* matrix = (double *) calloc(dimension*dimension, sizeof(double));
+ 		// set seed with mix()-function
+    unsigned long seed = mix(clock(), time(NULL), getpid());
+    srand(seed);
+ 		// initialize the matrix
+    int j, i;
+ 		double rnd = 0.0;
+		#pragma omp parallel for
+    for (i=0; i<dimension; i++) {
+        for (j=0; j<dimension; j++) {
+            rnd = rand() % MAX_VAL + MIN_VAL;
+            matrix[i*dimension + j] = rnd;
+         }
+     }
+		 return matrix;
+ }
 
-	#pragma omp parallel for
-	for(i=0; i<dimension; i++) {
-		for(j=0; j<dimension; j++) {
-			matrix[i][j] = rand() % MAX_VAL + MIN_VAL;
-		}
-	}
-	return matrix;
-}
-
-/************ create a square matrix from zeros ************/
-double** zeroSquareMatrix(int dimension) {
-// Generate 2 dimensional zero double matrix
-	double** matrix = malloc(dimension * sizeof(double*));
-	int i, j; // Iterators
-	for(i=0; i<dimension; i++) {
-		matrix[i] = malloc(dimension * sizeof(double));
-	}
-// set Random seed
- 	unsigned long seed = mix(clock(), time(NULL), getpid()); // call mix-function
- 	srand(seed);
-
-	for(i=0; i<dimension; i++) {
-		for(j=0; j<dimension; j++) {
-			matrix[i][j] = 0;
-		}
-	}
-	return matrix;
-}
+ /************ create square matrizes C with zeros ************/
+ double* zeroMatrix(const int dimension) {
+	 	// generate 2-dimensional random matrix with doubles
+		double* matrix = (double *) calloc(dimension*dimension, sizeof(double));
+ 		// initialize the matrix
+    int j, i;
+		#pragma omp parallel for
+    for (i=0; i<dimension; i++) {
+        for (j=0; j<dimension; j++) {
+            matrix[i*dimension + j] = 0.0;
+         }
+     }
+		 return matrix;
+ }
 
 /************* Display the squared matrix **************/
-void displaySquareMatrix(double** matrix, int dimension) {
+/*void displayMatrix(double* matrix, const int dimension) {
 	int i, j; // Iterators
 	for(i=0; i<dimension; i++) {
 		for(j=0; j<dimension; j++) {
@@ -163,133 +162,119 @@ void displaySquareMatrix(double** matrix, int dimension) {
 		}
 		printf("\n");
 	}
-}
+}*/
 
 /*********** Sequential Matrix Multiplication ***********/
-double sequentialMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension) {
+double sequentialMultiply(double* matrixA, double* matrixB, double* matrixC, const int dimension) {
 // Sequentiall multiply given input matrices and return resultant matrix
 	int i, j, k; // Iterators
+	double elapsed; // time difference
 
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 	/* Head */
 	for(i=0; i<dimension; i++) {
 		for(j=0; j<dimension; j++) {
+			matrixC[i*dimension + j] = 0.0;
 			for(k=0; k<dimension; k++) {
-				matrixC[i][j] += matrixA[i][k] * matrixB[k][j];
+				matrixC[i*dimension + j] += matrixA[i*dimension + k] * matrixB[k*dimension + j];
 			}
 		}
 	}
 	/* Tail */
 	gettimeofday(&t1, 0);
-	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
 
 	return elapsed;
 }
 
-/*********** parallel Matrix Multiplication with OpenMP **********/
-double parallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads) {
-// Parallel multiply given input matrices and return resultant matrix
-	int i, j, k;
-
-	struct timeval t0, t1;
-	gettimeofday(&t0, 0);
-	/* Head */
-	#pragma omp parallel num_threads(numThreads)
-	{
-		#pragma omp for
-		for(i=0; i<dimension; i++) {
-			for(j=0; j<dimension; j++) {
-				for(k=0; k<dimension; k++) {
-					matrixC[i][j] += matrixA[i][k] * matrixB[k][j];
-				}
-			}
-		}
-	}
-	/* Tail */
-	gettimeofday(&t1, 0);
-	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
-
-	return elapsed;
-}
-
-/*********** Optimized parallel Matrix Multiplication with OpenMP **********/
-double optimizedParallelMultiply(double** matrixA, double** matrixB, double** matrixC, int dimension, int numThreads) {
+/*********** parallel Matrix Multiplication with OpenMP and static schedule **********/
+double parallelMultiply_omp_static(double* matrixA, double* matrixB, double* matrixC, int dimension, int numThreads) {
 // Parallel multiply given input matrices using optimal methods and return resultant matrix
-	int i, j, k;
-	double tot;
+	int i, j, k; // Iterators
+	double elapsed; // time difference
 	// take the time
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 	/* Head */
-	convert(matrixA, matrixB, dimension);
-	#pragma omp parallel shared(matrixC) private(i, j, k, tot) num_threads(numThreads)
+	#pragma omp parallel private(i, j, k) num_threads(numThreads)
 	{
 		#pragma omp for schedule(static)
 		for(i=0; i<dimension; i++) {
 			for(j=0; j<dimension; j++) {
-				tot = 0.0;
+				matrixC[i*dimension + j] = 0.0;
 				for(k=0; k<dimension; k++) {
-					tot += flatA[i*dimension + k] * flatB[j*dimension + k];
+					matrixC[i*dimension + j] += matrixA[i*dimension + k] * matrixB[k*dimension + j];
 				}
-				matrixC[i][j] = tot;
 			}
 		}
 	}
 	/* Tail */
 	gettimeofday(&t1, 0);
-	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
 
 	return elapsed;
 }
-// convert-function for optimized matrix multiplication with OpenMP
-void convert(double** matrixA, double** matrixB, int dimension) {
-	int i,j;
-	#pragma omp parallel for
-	for(i=0; i<dimension; i++) {
-		for(j=0; j<dimension; j++) {
-			flatA[i*dimension + j] = matrixA[i][j];
-			flatB[j*dimension + i] = matrixB[i][j];
+
+/*********** parallel Matrix Multiplication with OpenMP and static schedule **********/
+double parallelMultiply_omp_dynamic(double* matrixA, double* matrixB, double* matrixC, int dimension, int numThreads) {
+// Parallel multiply given input matrices using optimal methods and return resultant matrix
+	int i, j, k;
+	double elapsed; // time difference
+	// take the time
+	struct timeval t0, t1;
+	gettimeofday(&t0, 0);
+	/* Head */
+	#pragma omp parallel private(i, j, k) num_threads(numThreads)
+	{
+		#pragma omp for schedule(dynamic)
+		for(i=0; i<dimension; i++) {
+			for(j=0; j<dimension; j++) {
+				matrixC[i*dimension + j] = 0.0;
+				for(k=0; k<dimension; k++) {
+					matrixC[i*dimension + j] += matrixA[i*dimension + k] * matrixB[k*dimension + j];
+				}
+			}
 		}
 	}
+	/* Tail */
+	gettimeofday(&t1, 0);
+	elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
+
+	return elapsed;
 }
 
 /********** Check the Results of the different Multiplications against Sequantial Calculation ***********/
-int verifyMultiplication(double** matrixA, double** matrixB, double** result, int dimension) {
+int verifyMultiplication(double* matrixA, double* matrixB, double* result, int dimension) {
 
 	int i, j, k;
-	double tot, sumErrors;
+	double tot, sumErrors = 0.0;
 
 	for(i=0; i<dimension; i++) {
 		for(j=0; j<dimension; j++) {
 			tot = 0.0;
 			for(k=0; k<dimension; k++) {
-				tot += matrixA[i][k] * matrixB[k][j];
+				tot += matrixA[i*dimension + k] * matrixB[k*dimension + j];
 			}
-			sumErrors += fabs(tot - result[i][j]);
-			/*if(fabs(tot-result[i][j]) > THRESHOLD) {
-				printf("Result is incorrect!\n");
-				return; */
+			sumErrors += fabs( tot - result[i*dimension] + j);
 		}
 	}
-	sumErrors = fabs((sumErrors/(dimension*dimension)) - THRESHOLD);
-	//printf("Result is correct!\n");
+	sumErrors = fabs( (sumErrors/(dimension*dimension)) - THRESHOLD );
 	return sumErrors;
 }
 
 /************* Test Scripts for Multiplications ***************/
 // Sequential Test Script
 void sequentialMultiplyTest(int dimension, int iterations) {
+	// prepare file to write
 	FILE* fp;
-	fp = fopen("SequentialMultiplyTest.txt", "a+");
-
+	fp = fopen("sequentialMultiplyTest.txt", "a+");
 	// Console write
 	printf("----------------------------------\n");
 	printf("Test : Sequential Multiply        \n");
 	printf("----------------------------------\n");
 	printf("Dimension: %d\n", dimension);
 	printf("..................................\n");
-
 	// File write
 	fprintf(fp, "----------------------------------\n");
 	fprintf(fp, "Test : Sequential Multiply        \n");
@@ -297,14 +282,24 @@ void sequentialMultiplyTest(int dimension, int iterations) {
 	fprintf(fp, "Dimension : %d\n", dimension);
 	fprintf(fp, "..................................\n");
 
-	double* opmLatency = malloc(iterations * sizeof(double));
-	double** matrixA = randomSquareMatrix(dimension);
-	double** matrixB = randomSquareMatrix(dimension);
+	// declare matrices and variables
+	double* matrixA = NULL;
+	double* matrixB = NULL;
+	double* matrixResult = NULL;
+	double* opmLatency = NULL;
+	// allocate space for variables
+	matrixA = (double *) calloc(dimension*dimension, sizeof(double));
+	matrixB = (double *) calloc(dimension*dimension, sizeof(double));
+	matrixResult = (double *) calloc(dimension*dimension, sizeof(double));
+	opmLatency = malloc(iterations * sizeof(double));
+	// create random matrices A and B
+	matrixA = randomMatrix(dimension);
+	matrixB = randomMatrix(dimension);
 
 	// Iterate and measure performance
 	int i;
 	for(i=0; i<iterations; i++) {
-		double** matrixResult = zeroSquareMatrix(dimension);
+		matrixResult = zeroMatrix(dimension);
 		opmLatency[i] = sequentialMultiply(matrixA, matrixB, matrixResult, dimension);
 		free(matrixResult);
 
@@ -319,17 +314,16 @@ void sequentialMultiplyTest(int dimension, int iterations) {
 	printf("----------------------------------\n");
 	printf("Analyze Measurements              \n");
 	printf("----------------------------------\n");
-
 	// File write
 	fprintf(fp, "\n");
 	fprintf(fp, "----------------------------------\n");
 	fprintf(fp, "Analyze Measurements              \n");
 	fprintf(fp, "----------------------------------\n");
 
+	// Start statistical analysis
 	double sum = 0.0;
 	double sumSquared = 0.0;
 
-	// Statistical analyze
 	for(i=0; i<iterations; i++) {
 		sum += opmLatency[i];
 		sumSquared += pow(opmLatency[i], 2.0);
@@ -343,7 +337,6 @@ void sequentialMultiplyTest(int dimension, int iterations) {
 	printf("Mean               : %f\n", mean);
 	printf("Standard Deviation : %f\n", standardDeviation);
 	printf("----------------------------------\n");
-
 	//File write
 	fprintf(fp, "Mean               : %f\n", mean);
 	fprintf(fp, "Standard Deviation : %f\n", standardDeviation);
@@ -357,34 +350,43 @@ void sequentialMultiplyTest(int dimension, int iterations) {
 }
 
 // Parallel OpenMP Test Script
-void parallelMultiplyTest(int dimension, int iterations, int numThreads) {
+void parallelMultiplyTest_omp_static(int dimension, int iterations, int numThreads) {
 	FILE* fp;
-	fp = fopen("ParallelMultiplyTest.txt", "a+");
+	fp = fopen("parallelMultiplyTest_omp_static.txt", "a+");
 
 	// Console write
 	printf("----------------------------------\n");
-	printf("Test : Parallel Multiply          \n");
+	printf("Test : Parallel Multiply OMP static        \n");
 	printf("----------------------------------\n");
 	printf("Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	printf("..................................\n");
 
 	// File write
 	fprintf(fp, "----------------------------------\n");
-	fprintf(fp, "Test : Parallel Multiply          \n");
+	fprintf(fp, "Test : Parallel Multiply OMP static         \n");
 	fprintf(fp, "----------------------------------\n");
 	fprintf(fp, "Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	fprintf(fp, "..................................\n");
 
-	double* opmLatency = malloc(iterations * sizeof(double));
-	double* matrixCheck = malloc(iterations * sizeof(double));
-	double** matrixA = randomSquareMatrix(dimension);
-	double** matrixB = randomSquareMatrix(dimension);
+	// declare matrices and variables
+	double* matrixA = NULL;
+	double* matrixB = NULL;
+	double* matrixResult = NULL;
+	double* opmLatency = NULL;
+	// allocate space for variables
+	matrixA = (double *) calloc(dimension*dimension, sizeof(double));
+	matrixB = (double *) calloc(dimension*dimension, sizeof(double));
+	matrixResult = (double *) calloc(dimension*dimension, sizeof(double));
+	opmLatency = malloc(iterations * sizeof(double));
+	// create random matrices A and B
+	matrixA = randomMatrix(dimension);
+	matrixB = randomMatrix(dimension);
 
 	// Iterate and measure performance
 	int i;
 	for(i=0; i<iterations; i++) {
-		double** matrixResult = zeroSquareMatrix(dimension);
-		opmLatency[i] = parallelMultiply(matrixA, matrixB, matrixResult, dimension, numThreads);
+		matrixResult = zeroMatrix(dimension);
+		opmLatency[i] = parallelMultiply_omp_static(matrixA, matrixB, matrixResult, dimension, numThreads);
 		// check the result of the simple OpenMP parallel Multiplication
 		//matrixCheck[i] = verifyMultiplication_omp(matrixA, matrixB, matrixResult, dimension);
 		free(matrixResult);
@@ -433,40 +435,49 @@ void parallelMultiplyTest(int dimension, int iterations, int numThreads) {
 	// Releasing memory
 	fclose(fp);
 	free(opmLatency);
-	free(matrixCheck);
+	//free(matrixCheck);
 	free(matrixA);
 	free(matrixB);
 }
 
 // optimized parallel OpenMP Test Script
-void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads) {
+void parallelMultiplyTest_omp_dynamic(int dimension, int iterations, int numThreads) {
 	FILE* fp;
-	fp = fopen("OptimizedParallelMultiplyTest.txt", "a+");
+	fp = fopen("parallelMultiplyTest_omp_dynamic.txt", "a+");
 
 	// Console write
 	printf("----------------------------------\n");
-	printf("Test : Optimized Parallel Multiply\n");
+	printf("Test : Parallel Multiply OMP dynamic\n");
 	printf("----------------------------------\n");
 	printf("Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	printf("..................................\n");
 
 	// File write
 	fprintf(fp, "----------------------------------\n");
-	fprintf(fp, "Test : Optimized Parallel Multiply\n");
+	fprintf(fp, "Test : Parallel Multiply OMP dynamicn");
 	fprintf(fp, "----------------------------------\n");
 	fprintf(fp, "Dimension: %d\tNo. of Threads: %d\n", dimension, numThreads);
 	fprintf(fp, "..................................\n");
 
-	double* opmLatency = malloc(iterations * sizeof(double));
-	double* matrixCheck = malloc(iterations * sizeof(double));
-	double** matrixA = randomSquareMatrix(dimension);
-	double** matrixB = randomSquareMatrix(dimension);
+	// declare matrices and variables
+	double* matrixA = NULL;
+	double* matrixB = NULL;
+	double* matrixResult = NULL;
+	double* opmLatency = NULL;
+	// allocate space for variables
+	matrixA = (double *) calloc(dimension*dimension, sizeof(double));
+	matrixB = (double *) calloc(dimension*dimension, sizeof(double));
+	matrixResult = (double *) calloc(dimension*dimension, sizeof(double));
+	opmLatency = malloc(iterations * sizeof(double));
+	// create random matrices A and B
+	matrixA = randomMatrix(dimension);
+	matrixB = randomMatrix(dimension);
 
 	// Iterate and measure performance
 	int i;
 	for(i=0; i<iterations; i++) {
-		double** matrixResult = zeroSquareMatrix(dimension);
-		opmLatency[i] = optimizedParallelMultiply(matrixA, matrixB, matrixResult, dimension, numThreads);
+		matrixResult = zeroMatrix(dimension);
+		opmLatency[i] = parallelMultiply_omp_dynamic(matrixA, matrixB, matrixResult, dimension, numThreads);
 		// check the result of the simple OpenMP parallel Multiplication
 		//matrixCheck[i] = verifyMultiplication_omp_opti(matrixA, matrixB, matrixResult, dimension);
 		free(matrixResult);
@@ -515,7 +526,7 @@ void optimizedParallelMultiplyTest(int dimension, int iterations, int numThreads
 	// Releasing memory
 	fclose(fp);
 	free(opmLatency);
-	free(matrixCheck);
+	//free(matrixCheck);
 	free(matrixA);
 	free(matrixB);
 }

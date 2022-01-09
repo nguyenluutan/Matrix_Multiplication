@@ -266,13 +266,11 @@ void SUMMA(MPI_Comm comm_cart, double* C, double* A, double* B, int n) {
         if (my_col == bcast_root) {
             memcpy(A, A_loc_save, n*n*sizeof(double));
         }
-
         MPI_Bcast(A, n*n, MPI_DOUBLE, bcast_root, row_comm);
 
         if (my_row == bcast_root) {
             memcpy(B, B_loc_save, n*n*sizeof(double));
         }
-
         MPI_Bcast(B, n*n, MPI_DOUBLE, bcast_root, col_comm);
 
         MyMatMat(C_loc_tmp, A, B, n);

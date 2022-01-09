@@ -7,7 +7,7 @@
 
 module load mpich-3.2
 
-export OMP_NUM_THREADS=1024 # if not using OpenMP, just comment the export out !
+#export OMP_NUM_THREADS=1024 # if not using OpenMP, just comment the export out !
 
 mpirun.actual -np 1024  /home/eric.jahnke/SUMMA_3112/summa7_mpi 8192 8192 8192
 
